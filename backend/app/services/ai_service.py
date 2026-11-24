@@ -68,8 +68,11 @@ def _call_gemini(prompt: str, image_b64: Optional[str] = None, mime_type: str = 
     api_key = settings.gemini_api_key.strip()
     if not api_key:
         return None
-    model = settings.gemini_model.strip() or "gemini-2.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    preferred = settings.gemini_model.strip() or "gemini-2.5-flash"
+    # Try preferred model first, then automatic free-tier fallbacks on 404
+    candidates_models = list(
+        dict.fromkeys([preferred, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-1.5-flash"])
+    )
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
     if image_b64:
@@ -82,19 +85,30 @@ def _call_gemini(prompt: str, image_b64: Optional[str] = None, mime_type: str = 
             "responseMimeType": "application/json",
         },
     }
-    try:
-        with httpx.Client(timeout=35.0) as client:
-            resp = client.post(url, json=body)
-            resp.raise_for_status()
-            data = resp.json()
-            candidates = data.get("candidates") or []
-            if not candidates:
-                return None
-            out_parts = candidates[0].get("content", {}).get("parts") or []
-            return "".join(p.get("text", "") for p in out_parts).strip() or None
-    except Exception as exc:
-        logger.warning("Chamada Gemini API falhou: %s", exc)
-        return None
+    headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+
+    with httpx.Client(timeout=35.0) as client:
+        for model in candidates_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            try:
+                resp = client.post(url, json=body, headers=headers)
+                if resp.status_code == 404:
+                    logger.debug("Modelo Gemini %s devolveu 404; a tentar fallback...", model)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                candidates = data.get("candidates") or []
+                if not candidates:
+                    continue
+                out_parts = candidates[0].get("content", {}).get("parts") or []
+                text = "".join(p.get("text", "") for p in out_parts).strip()
+                if text:
+                    return text
+            except Exception as exc:
+                logger.warning("Chamada Gemini API (%s) falhou: %s", model, type(exc).__name__)
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403):
+                    break
+    return None
 
 
 def _call_ollama(prompt: str, image_b64: Optional[str] = None) -> Optional[str]:

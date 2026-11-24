@@ -170,6 +170,16 @@ def _format_scan_response(
     rs_nh_count = sum(
         1 for i in liquid_items if i.get("trend_template", {}).get("relative_strength", {}).get("rs_new_high_before_price")
     )
+    pocket_pivot_count = sum(1 for i in liquid_items if i.get("quant", {}).get("pocket_pivot", {}).get("detected"))
+    squeeze_count = sum(
+        1
+        for i in liquid_items
+        if i.get("quant", {}).get("ttm_squeeze", {}).get("squeeze_on")
+        or i.get("quant", {}).get("ttm_squeeze", {}).get("squeeze_fire_long")
+    )
+    ep_count = sum(1 for i in liquid_items if i.get("quant", {}).get("episodic_pivot", {}).get("detected"))
+    htf_count = sum(1 for i in liquid_items if i.get("quant", {}).get("high_tight_flag", {}).get("detected"))
+    wt3_count = sum(1 for i in liquid_items if i.get("quant", {}).get("three_weeks_tight", {}).get("detected"))
     earnings_warn_count = sum(1 for i in liquid_items if i.get("earnings_within_14d"))
 
     return {
@@ -184,6 +194,11 @@ def _format_scan_response(
             "vcp_count": vcp_count,
             "breakout_count": breakout_count,
             "rs_new_high_count": rs_nh_count,
+            "pocket_pivot_count": pocket_pivot_count,
+            "squeeze_count": squeeze_count,
+            "ep_count": ep_count,
+            "htf_count": htf_count,
+            "wt3_count": wt3_count,
             "earnings_warning_count": earnings_warn_count,
         },
         "opportunities": liquid_items,

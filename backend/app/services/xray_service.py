@@ -4,6 +4,7 @@ from typing import Any, Optional
 import pandas as pd
 
 from app.services.ai_service import generate_trader_briefing
+from app.services.crypto_derivatives import get_crypto_derivatives_for_ticker
 from app.services.market_data import (
     get_fundamentals_and_earnings,
     get_ohlcv,
@@ -12,6 +13,7 @@ from app.services.market_data import (
 )
 from app.services.minervini_vcp import analyze_sepa_vcp, compute_rs_line_series
 from app.services.news_sentiment import get_asset_news
+from app.services.quant_signals import compute_anchored_vwaps
 
 
 def _build_single_tf_series(df: pd.DataFrame, ma_windows: tuple[int, int, int]) -> dict[str, list[dict[str, Any]]]:
@@ -95,11 +97,22 @@ def build_chart_payload(
 
     price = sepa["price"]
     stop_6pct_line = round(price * 0.94, 5)
+    avwaps = compute_anchored_vwaps(df)
 
     return {
         # Backwards-compatible top-level daily keys
         **daily_series,
         "rs_line": rs_daily,
+        "avwap_swing_low": avwaps["swing_low"],
+        "avwap_ytd": avwaps["ytd"],
+        "avwap_meta": {
+            "swing_low_anchor_date": avwaps.get("swing_low_anchor_date"),
+            "ytd_anchor_date": avwaps.get("ytd_anchor_date"),
+            "above_avwap_swing": avwaps.get("above_avwap_swing"),
+            "above_avwap_ytd": avwaps.get("above_avwap_ytd"),
+        },
+        "pocket_pivot_dates": sepa.get("quant", {}).get("pocket_pivot", {}).get("recent_dates") or [],
+        "ttm_squeeze_state": sepa.get("quant", {}).get("ttm_squeeze", {}).get("state", "NEUTRO"),
         "weekly": {
             **weekly_series,
             "rs_line": rs_weekly,
@@ -202,6 +215,11 @@ def get_asset_xray(ticker: str, force_refresh: bool = False) -> dict[str, Any]:
     )
 
     chart = build_chart_payload(df, bench_df if not bench_df.empty else None, sepa)
+    derivatives = (
+        get_crypto_derivatives_for_ticker(norm, price_change_24h=sepa.get("daily_change_pct"), force_refresh=force_refresh)
+        if asset_type == "crypto"
+        else None
+    )
 
     return {
         "ticker": norm,
@@ -210,6 +228,7 @@ def get_asset_xray(ticker: str, force_refresh: bool = False) -> dict[str, Any]:
         "updated_at": time.time(),
         "sepa": sepa,
         "fundamentals": fundamentals,
+        "derivatives": derivatives,
         "news": news,
         "briefing": briefing,
         "chart": chart,

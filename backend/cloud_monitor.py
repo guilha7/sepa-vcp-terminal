@@ -1,10 +1,10 @@
 """
 SEPA/VCP Cloud Monitor — Corre grátis no GitHub Actions mesmo com o PC desligado!
-Verifica:
-  1. Alertas de Preço definidos em alertas_cloud.json
-  2. Mudanças no Semáforo Macro (Risk-On / Cautela / Risk-Off)
-  3. Breakouts VCP com volume >= 1.5x (modo full)
-Evita alertas repetidos guardando estado em cloud_state.json.
+Modos suportados:
+  - alerts  : Alertas de Preço (alertas_cloud.json) + Mudança Semáforo Macro + IBD Distribution/FTD
+  - full    : Tudo em alerts + Scanner Multi-Estratégia (Breakout VCP, Pocket Pivot, Episodic Pivot, Funding Extremo)
+  - morning : Briefing Matinal estruturado (Macro + IBD + Breadth + Líderes + Cripto + Top 3 Setups do Dia)
+  - weekly  : Resumo Semanal de Domingo (Rotação Semanal + 3 Weeks Tight + Cripto Derivados)
 """
 
 import argparse
@@ -48,6 +48,82 @@ def _save_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def build_morning_briefing_message(macro: dict[str, Any], scan: dict[str, Any]) -> tuple[str, str, str]:
+    """Formats a crisp, zero-spam Morning Briefing for Telegram/Discord."""
+    tl = macro.get("macro_traffic_light") or {}
+    ibd = macro.get("ibd_timing") or {}
+    br = macro.get("market_breadth") or {}
+    us_leaders = (macro.get("us_rotation") or {}).get("leaders") or []
+    cr_deriv = macro.get("crypto_derivatives") or {}
+    alt = cr_deriv.get("altseason") or {}
+
+    regime = tl.get("regime", "CAUTELA")
+    level = "success" if regime == "RISK_ON" else ("danger" if regime == "RISK_OFF" else "warning")
+    spy_dist = (ibd.get("spy") or {}).get("distribution_days", 0)
+    qqq_dist = (ibd.get("qqq") or {}).get("distribution_days", 0)
+
+    leaders_txt = ", ".join(f"{s['ticker']} ({s['rs_1m']:+.1f}%)" for s in us_leaders[:3]) or "N/D"
+    btc_funding = None
+    for a in cr_deriv.get("assets") or []:
+        if a.get("ticker") == "BTC-USD":
+            btc_funding = a.get("funding_rate_pct")
+            break
+
+    top_setups = [
+        o for o in (scan.get("opportunities") or [])
+        if o.get("liquidity", {}).get("passed", True) and not o.get("earnings_within_14d")
+    ][:3]
+
+    setup_lines = []
+    for o in top_setups:
+        plan = o.get("trade_plan") or {}
+        q = o.get("quant") or {}
+        tags = ", ".join((q.get("active_tags") or [])[:2])
+        tag_str = f" [{tags}]" if tags else ""
+        setup_lines.append(
+            f"• {o['ticker']} ({o['score']}/100){tag_str} — Pivô {plan.get('entry_pivot')} | "
+            f"Stop -{plan.get('stop_loss_pct')}% | ADR {q.get('adr_pct_20d') or 'N/D'}%"
+        )
+
+    ftd_line = "\n🚀 FOLLOW-THROUGH DAY ativo no índice!" if ibd.get("any_ftd") else ""
+    funding_str = f"{btc_funding:+.4f}%" if btc_funding is not None else "N/D"
+
+    msg = (
+        f"🚦 Macro: {tl.get('label')} ({tl.get('score')}/100)\n"
+        f"📊 IBD Dist. Days: SPY {spy_dist} | QQQ {qqq_dist}{ftd_line}\n"
+        f"📈 Breadth: {br.get('pct_above_sma50', 'N/D')}% > SMA50 | 4% Up/Down 5d: {br.get('up_4pct_5d', 0)}/{br.get('down_4pct_5d', 0)}\n"
+        f"💰 Setores Líderes: {leaders_txt}\n"
+        f"₿ Cripto: {alt.get('regime', 'N/D')} ({alt.get('altseason_index', 'N/D')}/100) | Funding BTC: {funding_str}\n\n"
+        f"🎯 Top Setups p/ Vigiar Hoje:\n"
+        + ("\n".join(setup_lines) if setup_lines else "• Sem setups fortes fora de earnings hoje.")
+    )
+    return "Briefing Matinal — SEPA/VCP Desk", msg, level
+
+
+def build_weekly_summary_message(macro: dict[str, Any], scan: dict[str, Any]) -> tuple[str, str, str]:
+    """Formats Sunday Weekly Review for Telegram/Discord (Sector Rotation + 3 Weeks Tight + Leaders)."""
+    tl = macro.get("macro_traffic_light") or {}
+    us_leaders = (macro.get("us_rotation") or {}).get("leaders") or []
+    us_laggards = (macro.get("us_rotation") or {}).get("laggards") or []
+    opps = scan.get("opportunities") or []
+
+    wt3_tickers = [
+        o["ticker"] for o in opps
+        if o.get("quant", {}).get("three_weeks_tight", {}).get("detected") and o.get("trend_template", {}).get("passed")
+    ][:5]
+    s2_top = [o["ticker"] for o in opps if o.get("trend_template", {}).get("passed")][:6]
+
+    msg = (
+        f"📅 Revisão Semanal de Mercado\n"
+        f"🚦 Regime: {tl.get('label')} ({tl.get('score')}/100)\n"
+        f"🟢 Entradas de Capital: {', '.join(s['ticker'] for s in us_leaders[:3]) or 'N/D'}\n"
+        f"🔴 Saídas de Capital: {', '.join(s['ticker'] for s in us_laggards[:3]) or 'N/D'}\n"
+        f"🔥 Top Stage 2 (8/8): {', '.join(s2_top) if s2_top else 'Nenhum esta semana'}\n"
+        f"🎯 3 Weeks Tight (prontos p/ 2ª feira): {', '.join(wt3_tickers) if wt3_tickers else 'Nenhum detetado'}"
+    )
+    return "Resumo Semanal — SEPA/VCP Desk", msg, "info"
+
+
 def run_cloud_monitor(
     mode: str = "alerts",
     config_path: Path = DEFAULT_CONFIG_PATH,
@@ -56,10 +132,7 @@ def run_cloud_monitor(
     dry_run: bool = False,
     price_overrides: Optional[dict[str, float]] = None,
 ) -> dict[str, Any]:
-    """
-    Executes one cloud monitoring pass and dispatches Telegram/Discord alerts.
-    Returns a summary dictionary of all checks and dispatched notifications.
-    """
+    """Executes one cloud monitoring pass and dispatches smart Telegram/Discord alerts."""
     cfg = _load_json(
         config_path,
         {
@@ -76,11 +149,13 @@ def run_cloud_monitor(
             "last_macro_regime": None,
             "triggered_price_alerts": {},
             "notified_breakouts": {},
+            "notified_events": {},
             "last_run_utc": None,
         },
     )
     state.setdefault("triggered_price_alerts", {})
     state.setdefault("notified_breakouts", {})
+    state.setdefault("notified_events", {})
 
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -110,6 +185,28 @@ def run_cloud_monitor(
             category="CLOUD_TEST",
         )
 
+    # --- Special Scheduled Digests: Morning Briefing & Sunday Weekly Summary ---
+    if mode in ("morning", "weekly"):
+        macro = compute_macro_and_rotation(force_refresh=True)
+        scan = run_sepa_vcp_scan(asset_type=None, force_refresh=(mode == "weekly"))
+        if mode == "morning":
+            t, m, lv = build_morning_briefing_message(macro, scan)
+            _emit(t, m, lv, "MORNING_BRIEFING")
+        else:
+            t, m, lv = build_weekly_summary_message(macro, scan)
+            _emit(t, m, lv, "WEEKLY_SUMMARY")
+
+        state["last_run_utc"] = now_iso
+        if not dry_run:
+            _save_json(state_path, state)
+        return {
+            "mode": mode,
+            "macro_regime": macro.get("macro_traffic_light", {}).get("regime"),
+            "dispatched_count": len(dispatched),
+            "dispatched": dispatched,
+            "dry_run": dry_run,
+        }
+
     # --- 1. Custom Price Alerts from alertas_cloud.json ---
     price_cache: dict[str, float] = dict(price_overrides or {})
     price_alerts = cfg.get("price_alerts") or []
@@ -128,7 +225,6 @@ def run_cloud_monitor(
         except Exception:
             continue
 
-        # Build deterministic signature so editing target_price re-arms the alert automatically!
         alert_id = str(alert.get("id") or f"{ticker}:{cond}:{target}")
         sig = f"{alert_id}|{ticker}|{cond}|{target}"
         if sig in state["triggered_price_alerts"]:
@@ -141,7 +237,6 @@ def run_cloud_monitor(
                 price_cache[ticker] = px
 
         if ticker not in price_cache:
-            logger.warning("Preço indisponível para %s", ticker)
             continue
 
         live = float(price_cache[ticker])
@@ -158,7 +253,7 @@ def run_cloud_monitor(
                 ticker=ticker,
             )
 
-    # --- 2. Macro Regime Shift Check ---
+    # --- 2. Macro Regime Shift + IBD Distribution / FTD + Extreme Crypto Funding ---
     macro_regime = None
     if cfg.get("check_macro_shift", True):
         try:
@@ -175,14 +270,45 @@ def run_cloud_monitor(
                     level=level,
                     category="MACRO_SHIFT",
                 )
+
+            # IBD Distribution Days >= 5 or Follow-Through Day alerts (max once/day)
+            ibd = macro.get("ibd_timing") or {}
+            if ibd.get("any_ftd") and state["notified_events"].get("IBD_FTD") != today_str:
+                state["notified_events"]["IBD_FTD"] = today_str
+                _emit(
+                    title="IBD Follow-Through Day (Sinal de Fundo!)",
+                    message=f"SPY: {(ibd.get('spy') or {}).get('ftd_date') or '—'} | QQQ: {(ibd.get('qqq') or {}).get('ftd_date') or '—'}. Confirmada entrada institucional em rally!",
+                    level="success",
+                    category="IBD_FTD",
+                )
+            elif ibd.get("max_distribution_days", 0) >= 5 and state["notified_events"].get("IBD_DIST") != today_str:
+                state["notified_events"]["IBD_DIST"] = today_str
+                _emit(
+                    title=f"Alerta Distribuição Institucional ({ibd['max_distribution_days']} dias)",
+                    message=f"SPY: {(ibd.get('spy') or {}).get('distribution_days', 0)} dias | QQQ: {(ibd.get('qqq') or {}).get('distribution_days', 0)} dias nos últimos 25 pregões. Reduz exposição e protege lucros!",
+                    level="danger",
+                    category="IBD_DISTRIBUTION",
+                )
+
+            # Extreme Crypto Funding Rate alerts (once/day per asset)
+            for ext in (macro.get("crypto_derivatives") or {}).get("extreme_funding_alerts") or []:
+                ev_key = f"FUNDING:{ext['ticker']}:{ext['code']}"
+                if state["notified_events"].get(ev_key) != today_str:
+                    state["notified_events"][ev_key] = today_str
+                    _emit(
+                        title=f"Funding Extremo ({ext['code']}): {ext['ticker']}",
+                        message=ext["detail"],
+                        level="warning" if ext["code"] == "EUFORIA" else "success",
+                        category="CRYPTO_FUNDING",
+                        ticker=ext["ticker"],
+                    )
         except Exception as exc:
             logger.warning("Falha na verificação Macro: %s", exc)
 
-    # --- 3. Full SEPA/VCP Breakout Scan (in 'full' mode) ---
+    # --- 3. Full Multi-Strategy Scan (Breakout VCP + Episodic Pivot + Pocket Pivot + Earnings < 5d) ---
     breakouts_found: list[str] = []
     if mode == "full" and cfg.get("check_vcp_breakouts", True):
         try:
-            # Include any custom watchlist tickers defined in alertas_cloud.json
             for tk in cfg.get("custom_watchlist") or []:
                 norm = normalize_ticker(str(tk))
                 atype = "crypto" if is_crypto_ticker(norm) else "stock"
@@ -193,11 +319,15 @@ def run_cloud_monitor(
             for opp in scan.get("opportunities") or []:
                 if not opp.get("liquidity", {}).get("passed", True):
                     continue
+                q = opp.get("quant") or {}
                 is_breakout = opp.get("status") == "BREAKOUT"
                 is_vcp_ready = opp.get("status") == "VCP_PRONTO" and opp.get("score", 0) >= max(min_score, 78)
-                if not (is_breakout or is_vcp_ready):
+                is_ep = bool(q.get("episodic_pivot", {}).get("detected"))
+                is_pp = bool(q.get("pocket_pivot", {}).get("detected")) and opp.get("score", 0) >= max(min_score, 72)
+
+                if not (is_breakout or is_vcp_ready or is_ep or is_pp):
                     continue
-                if opp.get("score", 0) < min_score:
+                if opp.get("score", 0) < min_score and not is_ep:
                     continue
 
                 tk = opp["ticker"]
@@ -213,25 +343,30 @@ def run_cloud_monitor(
                     if opp.get("earnings_within_14d")
                     else ""
                 )
-                label = "BREAKOUT VCP" if is_breakout else "VCP PRONTO (VDU)"
+                label = (
+                    "EPISODIC PIVOT"
+                    if is_ep
+                    else ("BREAKOUT VCP" if is_breakout else ("POCKET PIVOT" if is_pp else "VCP PRONTO (VDU)"))
+                )
                 _emit(
                     title=f"{label}: {tk} (Score {opp['score']}/100)",
                     message=(
-                        f"Preço: {opp['price']} ({opp['daily_change_pct']:+.2f}%) | "
+                        f"Preço: {opp['price']} ({opp['daily_change_pct']:+.2f}%) | ADR: {q.get('adr_pct_20d') or 'N/D'}%\n"
                         f"Pivô: {plan.get('entry_pivot')} | Stop -{plan.get('stop_loss_pct')}% ({plan.get('stop_loss_price')})\n"
                         f"Alvos: 2R {plan.get('target_2r')} | 3R {plan.get('target_3r')} | Vol: {vcp.get('breakout_volume_ratio')}x"
                         f"{earn_warn}"
                     ),
-                    level="success" if is_breakout else "info",
+                    level="success" if (is_breakout or is_ep) else "info",
                     category="BREAKOUT",
                     ticker=tk,
                 )
         except Exception as exc:
             logger.warning("Falha no scan SEPA/VCP cloud: %s", exc)
 
-    # Prune old breakout dates (> 14 entries keep recent)
     if len(state["notified_breakouts"]) > 100:
         state["notified_breakouts"] = {k: v for k, v in state["notified_breakouts"].items() if v == today_str}
+    if len(state["notified_events"]) > 100:
+        state["notified_events"] = {k: v for k, v in state["notified_events"].items() if v == today_str}
 
     state["last_run_utc"] = now_iso
     if not dry_run:
@@ -252,18 +387,16 @@ def run_cloud_monitor(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="SEPA/VCP 24/7 Cloud Monitor (GitHub Actions)")
-    parser.add_argument("--mode", choices=["alerts", "full"], default="alerts")
+    parser.add_argument("--mode", choices=["alerts", "full", "morning", "weekly"], default="alerts")
     parser.add_argument("--test-ping", action="store_true", help="Envia mensagem de teste imediata")
     parser.add_argument("--dry-run", action="store_true", help="Não envia notificações externas nem altera cloud_state.json")
     args = parser.parse_args()
 
-    # Check if at least one external channel is configured in env when not dry-run
     has_tg = bool(os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"))
     has_dc = bool(os.getenv("DISCORD_WEBHOOK_URL"))
     if not args.dry_run and not (has_tg or has_dc):
         logger.warning(
-            "Nenhum canal configurado nas variáveis de ambiente (TELEGRAM_BOT_TOKEN/CHAT_ID ou DISCORD_WEBHOOK_URL). "
-            "Adiciona-os em GitHub -> Settings -> Secrets and variables -> Actions."
+            "Nenhum canal configurado nas variáveis de ambiente (TELEGRAM_BOT_TOKEN/CHAT_ID ou DISCORD_WEBHOOK_URL)."
         )
 
     run_cloud_monitor(mode=args.mode, send_test_ping=args.test_ping, dry_run=args.dry_run)

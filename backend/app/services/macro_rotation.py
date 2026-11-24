@@ -6,8 +6,196 @@ import pandas as pd
 
 from app.config import CRYPTO_SECTORS, US_SECTOR_ETFS, settings
 from app.database import db
+from app.services.crypto_derivatives import get_crypto_derivatives_radar
 from app.services.market_data import get_batch_ohlcv
 from app.services.notifications import notification_service
+
+
+def compute_ibd_market_timing(df: Optional[pd.DataFrame], ticker: str = "SPY") -> dict[str, Any]:
+    """
+    William O'Neil / IBD Market Timing:
+    - Distribution Days (last 25 sessions): close <= -0.20% on volume > prev session.
+      Expires automatically if index rallies >= +5% above the distribution day's close.
+    - Follow-Through Day (FTD): Day 4-10 of a rally attempt after a 20d swing low,
+      closing >= +1.25% on higher volume than prior day.
+    """
+    if df is None or len(df) < 55:
+        return {
+            "ticker": ticker,
+            "distribution_days": 0,
+            "distribution_dates": [],
+            "follow_through_day": False,
+            "ftd_date": None,
+            "status": "INDISPONIVEL",
+            "label": "Dados insuficientes",
+        }
+
+    closes = df["close"].astype(float).values
+    lows = df["low"].astype(float).values
+    vols = df["volume"].astype(float).values
+    dates = df["date"].astype(str).values
+    n = len(df)
+
+    # 1. Distribution Days over last 25 trading sessions (with authentic +5% rally expiry)
+    start_idx = max(1, n - 25)
+    dist_dates: list[str] = []
+    for i in range(start_idx, n):
+        prev_c = closes[i - 1]
+        if prev_c <= 0:
+            continue
+        pct_chg = (closes[i] - prev_c) / prev_c * 100.0
+        if pct_chg <= -0.20 and vols[i] > vols[i - 1]:
+            # Check if invalidated by subsequent +5% rally from this close
+            future_max = float(np.max(closes[i + 1 :])) if i + 1 < n else closes[i]
+            if future_max < closes[i] * 1.05:
+                dist_dates.append(str(dates[i]))
+
+    dist_count = len(dist_dates)
+
+    # 2. Follow-Through Day (FTD) detection in last 10 sessions
+    ftd_detected = False
+    ftd_date = None
+    low_window_start = max(1, n - 25)
+    local_low_idx = low_window_start + int(np.argmin(lows[low_window_start : n - 3])) if n - 3 > low_window_start else low_window_start
+    for day_offset in range(4, 12):
+        idx = local_low_idx + day_offset
+        if idx >= n or idx < 1:
+            continue
+        # Ensure rally attempt wasn't undercut before FTD
+        if float(np.min(lows[local_low_idx + 1 : idx + 1])) < lows[local_low_idx] * 0.995:
+            continue
+        pct_chg = (closes[idx] - closes[idx - 1]) / closes[idx - 1] * 100.0 if closes[idx - 1] > 0 else 0.0
+        if pct_chg >= 1.25 and vols[idx] > vols[idx - 1]:
+            if idx >= n - 10:
+                ftd_detected = True
+                ftd_date = str(dates[idx])
+
+    price = float(closes[-1])
+    sma50 = float(np.mean(closes[-50:]))
+    sma200 = float(np.mean(closes[-200:])) if n >= 200 else sma50
+
+    if price < sma50 and price < sma200:
+        if ftd_detected:
+            status, label = "RALLY_ATTEMPT_FTD", "Follow-Through Day (Tentativa de Fundo)"
+        else:
+            status, label = "MARKET_IN_CORRECTION", "Mercado em Correção (Defensivo)"
+    elif dist_count >= 6:
+        status, label = "MARKET_IN_CORRECTION", f"Distribuição Pesada ({dist_count} dias)"
+    elif dist_count >= 4:
+        status, label = "UPTREND_UNDER_PRESSURE", f"Tendência sob Pressão ({dist_count} dias dist.)"
+    else:
+        status, label = "UPTREND_CONFIRMED", f"Tendência Confirmada ({dist_count} dias dist.)"
+
+    return {
+        "ticker": ticker,
+        "distribution_days": dist_count,
+        "distribution_dates": dist_dates[-6:],
+        "follow_through_day": ftd_detected,
+        "ftd_date": ftd_date,
+        "status": status,
+        "label": label,
+    }
+
+
+def compute_stockbee_breadth(extra_dfs: dict[str, pd.DataFrame]) -> dict[str, Any]:
+    """
+    Pradeep Bonde (Stockbee Market Monitor) Internal Market Breadth:
+    - % of scanned stocks trading above SMA 50 (T2108 proxy) and SMA 200
+    - Count of 4% Up days (up >= +4% on rising volume) vs 4% Down days (<= -4% on rising vol)
+    - 5-day rolling ratio of 4% breakouts vs breakdowns
+    """
+    stock_dfs: dict[str, pd.DataFrame] = {}
+
+    # Combine provided ETFs/stocks with cached stock OHLCV from watchlist
+    watchlist_stocks = [w["ticker"] for w in db.get_watchlist(asset_type="stock", only_enabled=True)]
+    for tk in watchlist_stocks:
+        if tk in extra_dfs and extra_dfs[tk] is not None and not extra_dfs[tk].empty:
+            stock_dfs[tk] = extra_dfs[tk]
+        else:
+            cached = db.cache_get(f"ohlcv:{tk}:15mo", allow_stale=True)
+            if isinstance(cached, dict) and cached.get("records"):
+                stock_dfs[tk] = pd.DataFrame(cached["records"])
+
+    for etf in US_SECTOR_ETFS.keys():
+        if etf not in stock_dfs and etf in extra_dfs and extra_dfs[etf] is not None and not extra_dfs[etf].empty:
+            stock_dfs[etf] = extra_dfs[etf]
+
+    evaluated = 0
+    above_50 = 0
+    above_200 = 0
+    up_4_today = 0
+    down_4_today = 0
+    up_4_5d = 0
+    down_4_5d = 0
+
+    for df in stock_dfs.values():
+        if df is None or len(df) < 55:
+            continue
+        closes = df["close"].astype(float).values
+        vols = df["volume"].astype(float).values
+        n = len(closes)
+        evaluated += 1
+        cur = closes[-1]
+        if cur > float(np.mean(closes[-50:])):
+            above_50 += 1
+        if n >= 200 and cur > float(np.mean(closes[-200:])):
+            above_200 += 1
+
+        # 4% Up / Down on rising volume today & last 5 sessions
+        for k in range(1, min(6, n)):
+            idx = n - k
+            prev = closes[idx - 1]
+            if prev <= 0:
+                continue
+            chg = (closes[idx] - prev) / prev * 100.0
+            vol_up = vols[idx] >= vols[idx - 1]
+            if chg >= 4.0 and vol_up:
+                up_4_5d += 1
+                if k == 1:
+                    up_4_today += 1
+            elif chg <= -4.0 and vol_up:
+                down_4_5d += 1
+                if k == 1:
+                    down_4_today += 1
+
+    pct_50 = round((above_50 / evaluated) * 100.0, 1) if evaluated > 0 else 50.0
+    pct_200 = round((above_200 / evaluated) * 100.0, 1) if evaluated > 0 else 50.0
+    ratio_5d = round(up_4_5d / max(down_4_5d, 1), 2)
+
+    if pct_50 <= 20.0:
+        state = "SOBREVENDA_EXTREMA"
+        label = "Sobrevenda Extrema (< 20% > SMA50)"
+        guidance = "Pânico generalizado — vigiar sinais de Follow-Through Day ou ressalto técnico."
+    elif pct_50 >= 80.0:
+        state = "SOBREAQUECIDO"
+        label = "Sobreaquecido (> 80% > SMA50)"
+        guidance = "Muitos ativos esticados — evitar perseguir breakouts tardios e proteger lucros."
+    elif pct_50 >= 55.0 and ratio_5d >= 1.3:
+        state = "AGRESSIVO_LONG"
+        label = "Breadth Saudável (Breakouts a Funcionar)"
+        guidance = "Participação larga de compradores — vento a favor para setups VCP e Pocket Pivots."
+    elif pct_50 < 40.0 or ratio_5d < 0.7:
+        state = "DEFENSIVO_CAIXA"
+        label = "Breadth Fraco (Modo Defensivo)"
+        guidance = "Mais quedas de 4% do que subidas — taxa de falha de breakouts é alta."
+    else:
+        state = "SELETIVO"
+        label = "Breadth Seletivo / Misto"
+        guidance = "Foca-te apenas nos 2–3 setores líderes e reduz o risco por posição."
+
+    return {
+        "universe_size": evaluated,
+        "pct_above_sma50": pct_50,
+        "pct_above_sma200": pct_200,
+        "up_4pct_today": up_4_today,
+        "down_4pct_today": down_4_today,
+        "up_4pct_5d": up_4_5d,
+        "down_4pct_5d": down_4_5d,
+        "ratio_5d": ratio_5d,
+        "state": state,
+        "label": label,
+        "guidance": guidance,
+    }
 
 
 def _pct_return(series: pd.Series, days: int) -> Optional[float]:
@@ -322,6 +510,11 @@ def compute_macro_and_rotation(force_refresh: bool = False) -> dict[str, Any]:
     crypto_leaders = crypto_sectors[:3]
     crypto_laggards = list(reversed(crypto_sectors[-3:])) if len(crypto_sectors) >= 3 else []
 
+    ibd_spy = compute_ibd_market_timing(dfs.get("SPY"), "SPY")
+    ibd_qqq = compute_ibd_market_timing(dfs.get("QQQ"), "QQQ")
+    breadth = compute_stockbee_breadth(dfs)
+    crypto_derivs = get_crypto_derivatives_radar(dfs, force_refresh=force_refresh)
+
     payload = {
         "updated_at": time.time(),
         "macro_traffic_light": {
@@ -333,6 +526,14 @@ def compute_macro_and_rotation(force_refresh: bool = False) -> dict[str, Any]:
             "factors": factors,
             "benchmarks": [spy_snap, qqq_snap, btc_snap, vix_snap, tnx_snap, dxy_snap],
         },
+        "ibd_timing": {
+            "spy": ibd_spy,
+            "qqq": ibd_qqq,
+            "max_distribution_days": max(ibd_spy["distribution_days"], ibd_qqq["distribution_days"]),
+            "any_ftd": bool(ibd_spy["follow_through_day"] or ibd_qqq["follow_through_day"]),
+        },
+        "market_breadth": breadth,
+        "crypto_derivatives": crypto_derivs,
         "us_rotation": {
             "benchmark": "SPY",
             "benchmark_returns": {"1w": spy_1w, "1m": spy_1m, "3m": spy_3m},

@@ -5,15 +5,16 @@ export default {
     extend: {
       colors: {
         terminal: {
-          bg: '#070b14',
-          panel: '#0d1424',
-          card: '#111a2e',
-          border: '#1e2c48',
-          hover: '#17233d',
+          bg: '#060a13',
+          panel: '#0c1322',
+          card: '#111b30',
+          border: '#1d2d4a',
+          hover: '#162440',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Space Grotesk', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
     },

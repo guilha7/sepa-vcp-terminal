@@ -178,6 +178,119 @@ export function XRayModule({ ticker, onChangeTicker, onSimulateTrade, onCreateAl
       {/* Interactive TradingView Lightweight Candlestick Chart */}
       <CandlestickChart chartData={data.chart} ticker={data.ticker} />
 
+      {/* Clean Multi-Strategy Quant Radar Strip (Weinstein, Qullamaggie, Morales, Carter, O'Neil) */}
+      {sepa.quant && (
+        <div className="terminal-card p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-white">Radar Multi-Estratégia (Além de Minervini)</h3>
+            <span className="text-[11px] text-slate-400">
+              Weinstein • Qullamaggie • Morales/Kacher • John Carter • O&apos;Neil CAN SLIM
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs font-mono">
+            <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
+              <div className="text-[10px] font-sans text-slate-400">Fase Weinstein</div>
+              <div
+                className={`font-bold mt-0.5 ${
+                  sepa.quant.weinstein?.stage === 2
+                    ? 'text-emerald-400'
+                    : sepa.quant.weinstein?.stage === 4
+                      ? 'text-rose-400'
+                      : 'text-amber-300'
+                }`}
+              >
+                Stage {sepa.quant.weinstein?.stage || '—'}
+              </div>
+              <div className="text-[10px] font-sans text-slate-500 truncate">{sepa.quant.weinstein?.label}</div>
+            </div>
+
+            <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
+              <div className="text-[10px] font-sans text-slate-400">ADR% (Qullamaggie)</div>
+              <div className="font-bold text-cyan-300 mt-0.5">{sepa.quant.adr_pct_20d ?? '—'}%/dia</div>
+              <div className="text-[10px] font-sans text-slate-500">
+                {sepa.quant.adr_tier} • Stop {sepa.quant.stop_in_adr_multiples ?? '—'}x ADR
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
+              <div className="text-[10px] font-sans text-slate-400">Mansfield RS / Ext. ATR</div>
+              <div className={`font-bold mt-0.5 ${(sepa.quant.mansfield_rs || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                MRS {sepa.quant.mansfield_rs !== null && sepa.quant.mansfield_rs !== undefined ? `${sepa.quant.mansfield_rs >= 0 ? '+' : ''}${sepa.quant.mansfield_rs}` : '—'}
+              </div>
+              <div className={`text-[10px] ${sepa.quant.is_atr_overextended ? 'text-rose-400 font-bold' : 'text-slate-500'}`}>
+                SMA50: {sepa.quant.atr_extension_sma50 ?? '—'}x ATR
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
+              <div className="text-[10px] font-sans text-slate-400">Pocket Pivot (10d)</div>
+              <div className={`font-bold mt-0.5 ${sepa.quant.pocket_pivot?.detected ? 'text-emerald-400' : 'text-slate-400'}`}>
+                {sepa.quant.pocket_pivot?.detected ? `SIM (${sepa.quant.pocket_pivot.vol_vs_max_down}x)` : 'Não'}
+              </div>
+              <div className="text-[10px] font-sans text-slate-500">Acumulação precoce</div>
+            </div>
+
+            <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
+              <div className="text-[10px] font-sans text-slate-400">TTM Squeeze (Carter)</div>
+              <div
+                className={`font-bold mt-0.5 ${
+                  sepa.quant.ttm_squeeze?.squeeze_fire_long
+                    ? 'text-emerald-400'
+                    : sepa.quant.ttm_squeeze?.squeeze_on
+                      ? 'text-amber-300'
+                      : 'text-slate-400'
+                }`}
+              >
+                {sepa.quant.ttm_squeeze?.state?.replace('_', ' ') || 'NEUTRO'}
+              </div>
+              <div className="text-[10px] font-sans text-slate-500">
+                {sepa.quant.ttm_squeeze?.squeeze_on ? `${sepa.quant.ttm_squeeze.squeeze_bars} dias comprimido` : 'Bollinger vs Keltner'}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
+              <div className="text-[10px] font-sans text-slate-400">CAN SLIM / Padrões</div>
+              <div className="font-bold text-purple-300 mt-0.5">
+                {sepa.quant.canslim?.score !== null ? `${sepa.quant.canslim.grade} (${sepa.quant.canslim.score})` : 'N/A'}
+              </div>
+              <div className="text-[10px] font-sans text-slate-500 truncate">
+                {[
+                  sepa.quant.episodic_pivot?.detected ? 'EP' : null,
+                  sepa.quant.high_tight_flag?.detected ? 'HTF' : null,
+                  sepa.quant.three_weeks_tight?.detected ? '3WT' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' • ') || 'Sem EP/HTF/3WT'}
+              </div>
+            </div>
+          </div>
+
+          {/* Live Binance Futures Derivatives strip for Crypto assets */}
+          {data.derivatives?.available && (
+            <div className="rounded-xl bg-purple-500/10 border border-purple-500/30 p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+              <span className="font-sans font-bold text-purple-200">Derivados Binance Futures (0€):</span>
+              <span>
+                Funding:{' '}
+                <strong className={data.derivatives.funding_rate_pct >= 0.05 ? 'text-rose-400' : 'text-emerald-300'}>
+                  {data.derivatives.funding_rate_pct >= 0 ? '+' : ''}
+                  {data.derivatives.funding_rate_pct}% ({data.derivatives.funding_signal?.label})
+                </strong>
+              </span>
+              <span>
+                OI: <strong className="text-white">{formatCompactNumber(data.derivatives.open_interest_usd)}</strong> (
+                {formatPct(data.derivatives.oi_change_24h_pct)})
+              </span>
+              <span>
+                Baleias L/S:{' '}
+                <strong className="text-cyan-300">
+                  {data.derivatives.top_traders_ls_ratio} ({data.derivatives.top_long_pct}% Long)
+                </strong>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Middle 2-Column Analytical Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         {/* Left: 8 Minervini Rules + VCP Diagnostics (7 cols) */}

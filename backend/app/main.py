@@ -1,11 +1,16 @@
+import hashlib
+import hmac
 import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from app.config import settings
+from app.config import PROJECT_ROOT, settings
 from app.database import db
 from app.models import HealthResponse
 from app.routers import alerts, macro, portfolio, scanner, settings as settings_router, vision, xray
@@ -20,6 +25,29 @@ logging.basicConfig(
 )
 
 
+def _expected_access_token() -> str:
+    pwd = (settings.app_access_password or "").strip()
+    if not pwd:
+        return ""
+    return hmac.new(pwd.encode("utf-8"), b"sepa-vcp-terminal-session-v1", hashlib.sha256).hexdigest()
+
+
+def _is_request_authorized(request: Request) -> bool:
+    expected = _expected_access_token()
+    if not expected:
+        return True
+    token = (
+        request.headers.get("x-access-token")
+        or request.query_params.get("access_token")
+        or ""
+    ).strip()
+    if not token:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth[7:].strip()
+    return bool(token and hmac.compare_digest(token, expected))
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init_schema()
@@ -31,8 +59,8 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="SEPA/VCP Trading Terminal API",
-    description="Terminal local 100% gratuito para análise Minervini SEPA/VCP, rotação de capital, notícias, visão IA e paper trading.",
-    version="1.0.0",
+    description="Terminal 100% gratuito para análise Minervini SEPA/VCP, multi-estratégia, rotação de capital, derivados cripto, visão IA e paper trading.",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -50,6 +78,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def optional_password_gate(request: Request, call_next):
+    """Protects /api/* when APP_ACCESS_PASSWORD is set (e.g., public Render deploy), while keeping /api/health open for UptimeRobot."""
+    path = request.url.path
+    if (
+        path.startswith("/api/")
+        and path not in ("/api/health", "/api/auth/status", "/api/auth/login")
+        and request.method != "OPTIONS"
+    ):
+        if not _is_request_authorized(request):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Acesso protegido por password. Faz login para continuar."},
+            )
+    return await call_next(request)
+
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request):
+    required = bool((settings.app_access_password or "").strip())
+    return {
+        "password_required": required,
+        "authenticated": _is_request_authorized(request),
+    }
+
+
+@app.post("/api/auth/login")
+def auth_login(payload: LoginRequest):
+    pwd = (settings.app_access_password or "").strip()
+    if not pwd:
+        return {"status": "ok", "token": ""}
+    if not hmac.compare_digest(payload.password.strip(), pwd):
+        raise HTTPException(status_code=401, detail="Password incorreta.")
+    return {"status": "ok", "token": _expected_access_token()}
+
 
 app.include_router(macro.router)
 app.include_router(scanner.router)
@@ -80,5 +149,34 @@ def health_check():
             "unread_alerts": db.count_unread_alerts(),
             "telegram_configured": ch["telegram_configured"],
             "discord_configured": ch["discord_configured"],
+            "password_protected": bool((settings.app_access_password or "").strip()),
         },
+    )
+
+
+# --- Production SPA Static Serving (used on Render / Docker deploy) ---
+FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+if (FRONTEND_DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="frontend-assets")
+
+
+@app.get("/favicon.svg", include_in_schema=False)
+def serve_favicon_svg():
+    fav = FRONTEND_DIST / "favicon.svg"
+    if fav.is_file():
+        return FileResponse(str(fav), media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="Not found")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend_spa(full_path: str):
+    if full_path.startswith("api/") or full_path in ("docs", "redoc", "openapi.json"):
+        raise HTTPException(status_code=404, detail="Not found")
+    index_html = FRONTEND_DIST / "index.html"
+    if index_html.is_file():
+        return FileResponse(str(index_html), media_type="text/html")
+    return JSONResponse(
+        {
+            "message": "SEPA/VCP API online. Corre 'npm run build' em /frontend para servir a interface neste endereço ou abre http://127.0.0.1:5173 em modo desenvolvimento."
+        }
     )

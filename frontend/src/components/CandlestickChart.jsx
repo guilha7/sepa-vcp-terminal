@@ -8,6 +8,7 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
   const [showSma50, setShowSma50] = useState(true)
   const [showSma150, setShowSma150] = useState(!compact)
   const [showSma200, setShowSma200] = useState(true)
+  const [showAvwap, setShowAvwap] = useState(!compact)
   const [showRsLine, setShowRsLine] = useState(true)
   const [showVcpSwings, setShowVcpSwings] = useState(true)
   const [showLevels, setShowLevels] = useState(true)
@@ -23,16 +24,16 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
 
     const chart = createChart(el, {
       width: el.clientWidth,
-      height: compact ? 300 : 450,
+      height: compact ? 300 : 460,
       layout: {
-        background: { color: '#0a101d' },
+        background: { color: '#090f1d' },
         textColor: '#94a3b8',
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: '#141e33' },
-        horzLines: { color: '#141e33' },
+        vertLines: { color: '#131d33' },
+        horzLines: { color: '#131d33' },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -41,15 +42,15 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
       },
       leftPriceScale: {
         visible: showRsLine && Boolean(activeSeries.rs_line?.length),
-        borderColor: '#1e2c48',
+        borderColor: '#1d2d4a',
         scaleMargins: { top: 0.14, bottom: 0.28 },
       },
       rightPriceScale: {
-        borderColor: '#1e2c48',
+        borderColor: '#1d2d4a',
         scaleMargins: { top: 0.08, bottom: 0.24 },
       },
       timeScale: {
-        borderColor: '#1e2c48',
+        borderColor: '#1d2d4a',
         timeVisible: false,
       },
     })
@@ -107,13 +108,38 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
       s200.setData(activeSeries.sma200)
     }
 
-    // Relative Strength (RS) Line on left axis (classic IBD/Minervini footprint)
+    // Brian Shannon Anchored VWAP (Swing Low + YTD) on Daily chart
+    if (showAvwap && timeframe === 'daily') {
+      if (chartData?.avwap_swing_low?.length) {
+        const avSwing = chart.addLineSeries({
+          color: '#fbbf24',
+          lineWidth: 1.8,
+          lineStyle: LineStyle.Dashed,
+          priceLineVisible: false,
+          lastValueVisible: true,
+          title: 'AVWAP Low',
+        })
+        avSwing.setData(chartData.avwap_swing_low)
+      }
+      if (chartData?.avwap_ytd?.length) {
+        const avYtd = chart.addLineSeries({
+          color: '#f472b6',
+          lineWidth: 1.5,
+          lineStyle: LineStyle.Dotted,
+          priceLineVisible: false,
+          lastValueVisible: true,
+          title: 'AVWAP YTD',
+        })
+        avYtd.setData(chartData.avwap_ytd)
+      }
+    }
+
+    // Relative Strength (RS) Line on left axis
     if (showRsLine && activeSeries.rs_line?.length) {
       const rsSeries = chart.addLineSeries({
         priceScaleId: 'left',
         color: '#60a5fa',
         lineWidth: 1.75,
-        lineStyle: LineStyle.Solid,
         priceLineVisible: false,
         lastValueVisible: true,
         title: 'Linha RS',
@@ -121,36 +147,52 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
       rsSeries.setData(activeSeries.rs_line)
     }
 
-    // Visual VCP Contractions (T1 -> T2 -> T3) plotted directly on Daily chart!
-    const vcpLegs = chartData?.vcp_legs || []
-    if (showVcpSwings && timeframe === 'daily' && vcpLegs.length > 0) {
+    // Visual VCP Contractions + Pocket Pivot markers on Daily chart
+    if (timeframe === 'daily') {
       const validDates = new Set(activeSeries.candles.map((c) => c.time))
       const markers = []
-      const legColors = ['#38bdf8', '#22d3ee', '#34d399', '#a3e635']
 
-      vcpLegs.forEach((lg, idx) => {
-        if (!validDates.has(lg.start_date) || !validDates.has(lg.end_date)) return
-        if (lg.start_date < lg.end_date) {
-          const swingLine = chart.addLineSeries({
+      const vcpLegs = chartData?.vcp_legs || []
+      if (showVcpSwings && vcpLegs.length > 0) {
+        const legColors = ['#38bdf8', '#22d3ee', '#34d399', '#a3e635']
+        vcpLegs.forEach((lg, idx) => {
+          if (!validDates.has(lg.start_date) || !validDates.has(lg.end_date)) return
+          if (lg.start_date < lg.end_date) {
+            const swingLine = chart.addLineSeries({
+              color: legColors[idx % legColors.length],
+              lineWidth: 2,
+              lineStyle: LineStyle.LargeDashed,
+              priceLineVisible: false,
+              lastValueVisible: false,
+              crosshairMarkerVisible: false,
+            })
+            swingLine.setData([
+              { time: lg.start_date, value: lg.high_price },
+              { time: lg.end_date, value: lg.low_price },
+            ])
+          }
+          markers.push({
+            time: lg.end_date,
+            position: 'belowBar',
             color: legColors[idx % legColors.length],
-            lineWidth: 2,
-            lineStyle: LineStyle.LargeDashed,
-            priceLineVisible: false,
-            lastValueVisible: false,
-            crosshairMarkerVisible: false,
+            shape: 'arrowUp',
+            text: `T${lg.leg} -${lg.depth_pct.toFixed(0)}%`,
           })
-          swingLine.setData([
-            { time: lg.start_date, value: lg.high_price },
-            { time: lg.end_date, value: lg.low_price },
-          ])
-        }
-        markers.push({
-          time: lg.end_date,
-          position: 'belowBar',
-          color: legColors[idx % legColors.length],
-          shape: 'arrowUp',
-          text: `T${lg.leg} -${lg.depth_pct.toFixed(0)}%`,
         })
+      }
+
+      // Pocket Pivot markers (Gil Morales & Chris Kacher)
+      const ppDates = chartData?.pocket_pivot_dates || []
+      ppDates.forEach((dt) => {
+        if (validDates.has(dt)) {
+          markers.push({
+            time: dt,
+            position: 'aboveBar',
+            color: '#38bdf8',
+            shape: 'circle',
+            text: 'PP',
+          })
+        }
       })
 
       if (markers.length > 0) {
@@ -208,32 +250,32 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
       ro.disconnect()
       chart.remove()
     }
-  }, [chartData, activeSeries, timeframe, range, showSma50, showSma150, showSma200, showRsLine, showVcpSwings, showLevels, compact])
+  }, [chartData, activeSeries, timeframe, range, showSma50, showSma150, showSma200, showAvwap, showRsLine, showVcpSwings, showLevels, compact])
 
   const hasWeekly = Boolean(chartData?.weekly?.candles?.length)
   const hasVcpLegs = (chartData?.vcp_legs || []).length > 0
+  const hasAvwap = Boolean(chartData?.avwap_swing_low?.length)
 
   return (
     <div className="terminal-card overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 border-b border-terminal-border bg-terminal-card/60">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 border-b border-terminal-border bg-terminal-card/70">
         <div className="flex flex-wrap items-center gap-2.5 text-[11px]">
-          <span className="font-mono font-bold text-slate-200">{ticker}</span>
+          <span className="font-mono font-bold text-white">{ticker}</span>
 
-          {/* Daily / Weekly Switcher */}
           {hasWeekly && (
-            <div className="inline-flex rounded-md bg-[#070b14] border border-terminal-border p-0.5 font-mono">
+            <div className="inline-flex rounded-lg bg-[#060a13] border border-terminal-border p-0.5 font-mono">
               <button
                 onClick={() => setTimeframe('daily')}
-                className={`px-2 py-0.5 rounded transition ${
-                  timeframe === 'daily' ? 'bg-cyan-500/25 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-slate-200'
+                className={`px-2 py-0.5 rounded-md transition ${
+                  timeframe === 'daily' ? 'bg-cyan-500/25 text-cyan-200 font-semibold' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 Diário
               </button>
               <button
                 onClick={() => setTimeframe('weekly')}
-                className={`px-2 py-0.5 rounded transition ${
-                  timeframe === 'weekly' ? 'bg-cyan-500/25 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-slate-200'
+                className={`px-2 py-0.5 rounded-md transition ${
+                  timeframe === 'weekly' ? 'bg-cyan-500/25 text-cyan-200 font-semibold' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 Semanal
@@ -242,8 +284,19 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
           )}
 
           {chartData?.rs_new_high_before_price && (
-            <span className="px-2 py-0.5 rounded bg-blue-500/20 border border-blue-400/50 text-blue-300 font-mono font-bold text-[10px]">
+            <span className="px-2 py-0.5 rounded-md bg-blue-500/20 border border-blue-400/50 text-blue-300 font-mono font-bold text-[10px]">
               ● RS NEW HIGH
+            </span>
+          )}
+          {chartData?.ttm_squeeze_state && chartData.ttm_squeeze_state !== 'NEUTRO' && (
+            <span
+              className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] border ${
+                chartData.ttm_squeeze_state === 'SQUEEZE_FIRE'
+                  ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
+                  : 'bg-amber-500/20 border-amber-400/50 text-amber-300'
+              }`}
+            >
+              ⚡ {chartData.ttm_squeeze_state === 'SQUEEZE_FIRE' ? 'SQUEEZE FIRE' : 'SQUEEZE ON'}
             </span>
           )}
 
@@ -259,6 +312,12 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
             <input type="checkbox" checked={showSma200} onChange={(e) => setShowSma200(e.target.checked)} className="accent-purple-500" />
             {timeframe === 'weekly' ? '40w' : '200'}
           </label>
+          {hasAvwap && timeframe === 'daily' && (
+            <label className="inline-flex items-center gap-1 cursor-pointer text-yellow-300" title="Anchored VWAP (Swing Low & YTD — Brian Shannon)">
+              <input type="checkbox" checked={showAvwap} onChange={(e) => setShowAvwap(e.target.checked)} className="accent-yellow-400" />
+              AVWAP
+            </label>
+          )}
           <label className="inline-flex items-center gap-1 cursor-pointer text-blue-400">
             <input type="checkbox" checked={showRsLine} onChange={(e) => setShowRsLine(e.target.checked)} className="accent-blue-500" />
             RS
@@ -266,7 +325,7 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
           {hasVcpLegs && timeframe === 'daily' && (
             <label className="inline-flex items-center gap-1 cursor-pointer text-emerald-400">
               <input type="checkbox" checked={showVcpSwings} onChange={(e) => setShowVcpSwings(e.target.checked)} className="accent-emerald-500" />
-              VCP
+              VCP/PP
             </label>
           )}
           <label className="inline-flex items-center gap-1 cursor-pointer text-rose-400">
@@ -281,9 +340,9 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
               <button
                 key={tf}
                 onClick={() => setRange(tf)}
-                className={`px-2 py-0.5 text-[11px] font-mono rounded transition ${
+                className={`px-2 py-0.5 text-[11px] font-mono rounded-md transition ${
                   range === tf
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                    ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/40'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-terminal-hover'
                 }`}
               >

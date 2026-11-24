@@ -124,6 +124,16 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
       if (stageFilter === 'vcp' && !item.vcp?.detected && !item.vcp?.breakout_signal) return false
       if (stageFilter === 'breakout' && item.status !== 'BREAKOUT') return false
       if (stageFilter === 'rs_nh' && !item.trend_template?.relative_strength?.rs_new_high_before_price) return false
+      if (stageFilter === 'pocket' && !item.quant?.pocket_pivot?.detected) return false
+      if (
+        stageFilter === 'squeeze' &&
+        !item.quant?.ttm_squeeze?.squeeze_on &&
+        !item.quant?.ttm_squeeze?.squeeze_fire_long
+      )
+        return false
+      if (stageFilter === 'ep' && !item.quant?.episodic_pivot?.detected) return false
+      if (stageFilter === 'htf' && !item.quant?.high_tight_flag?.detected) return false
+      if (stageFilter === 'wt3' && !item.quant?.three_weeks_tight?.detected) return false
       if (item.score < minScore) return false
       if (query.trim()) {
         const q = query.trim().toLowerCase()
@@ -228,9 +238,9 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-white">Scanner Automático Minervini (SEPA + VCP)</h2>
-          <p className="text-xs text-slate-400">
-            8 Regras Stage 2 • VCP por Swings Reais • RS New High • Breakout ≥ 1.5x • Último scan:{' '}
+          <h2 className="heading-hero">Passo 2 • Scanner Multi-Estratégia (SEPA, VCP, Pocket, Squeeze, EP)</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Escolhe uma estratégia abaixo e usa as setas ↑↓ do teclado para ver gráficos instantâneos à direita • Último scan:{' '}
             {formatTimestamp(data?.scanned_at)} {data?.from_cache ? '(SQLite Cache)' : '(Live)'}
           </p>
         </div>
@@ -324,18 +334,22 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
           ))}
         </div>
 
-        <div className="inline-flex flex-wrap rounded-lg bg-[#070b14] border border-terminal-border p-0.5 text-xs">
+        <div className="inline-flex flex-wrap rounded-xl bg-[#060a13] border border-terminal-border p-0.5 text-xs">
           {[
             { k: 'all', l: 'Todos' },
-            { k: 'stage2', l: 'Stage 2 (8/8)' },
-            { k: 'vcp', l: 'VCP / Breakout' },
-            { k: 'breakout', l: 'Breakouts' },
-            { k: 'rs_nh', l: 'RS New High' },
+            { k: 'stage2', l: `Stage 2 (${summary.stage2_count ?? 0})` },
+            { k: 'vcp', l: `VCP (${summary.vcp_count ?? 0})` },
+            { k: 'pocket', l: `Pocket Pivot (${summary.pocket_pivot_count ?? 0})` },
+            { k: 'squeeze', l: `TTM Squeeze (${summary.squeeze_count ?? 0})` },
+            { k: 'ep', l: `Episodic Pivot (${summary.ep_count ?? 0})` },
+            { k: 'htf', l: `HTF (${summary.htf_count ?? 0})` },
+            { k: 'wt3', l: `3 Weeks Tight (${summary.wt3_count ?? 0})` },
+            { k: 'rs_nh', l: `RS New High (${summary.rs_new_high_count ?? 0})` },
           ].map((o) => (
             <button
               key={o.k}
               onClick={() => setStageFilter(o.k)}
-              className={`px-2.5 py-1 rounded-md transition ${
+              className={`px-2.5 py-1 rounded-lg transition ${
                 stageFilter === o.k ? 'bg-emerald-500/20 text-emerald-300 font-semibold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -425,8 +439,23 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
                           )}
                         </div>
                         <div className="text-[11px] text-slate-400 truncate">
-                          {tt.passed_count}/8 • RS {rs.rs_rating ?? '—'} {contractions ? `• VCP ${contractions}` : ''}
+                          {item.quant?.weinstein?.stage ? `S${item.quant.weinstein.stage} • ` : ''}
+                          {tt.passed_count}/8 • RS {rs.rs_rating ?? '—'}
+                          {item.quant?.adr_pct_20d ? ` • ADR ${item.quant.adr_pct_20d}%` : ''}
+                          {contractions ? ` • VCP ${contractions}` : ''}
                         </div>
+                        {(item.quant?.active_tags || []).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {item.quant.active_tags.slice(0, 3).map((tg) => (
+                              <span
+                                key={tg}
+                                className="px-1.5 py-0.2 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-mono text-[9px] font-semibold"
+                              >
+                                {tg.replaceAll('_', ' ')}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 

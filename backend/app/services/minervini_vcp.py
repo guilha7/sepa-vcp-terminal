@@ -3,6 +3,8 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
+from app.services.quant_signals import evaluate_multi_strategy_signals
+
 
 def _round_price(val: float) -> float:
     if val >= 100:
@@ -659,6 +661,15 @@ def analyze_sepa_vcp(
         max_stop_pct=6.0,
     )
 
+    quant = evaluate_multi_strategy_signals(
+        df=df,
+        benchmark_df=benchmark_df,
+        asset_type=asset_type,
+        fundamentals=fundamentals,
+        rs_rating=tt["relative_strength"].get("rs_rating", 50),
+        stop_loss_pct=trade_plan["stop_loss_pct"],
+    )
+
     earnings_within_14d = bool((fundamentals or {}).get("earnings_within_14d", False))
     next_earnings_date = (fundamentals or {}).get("next_earnings_date")
     days_to_earnings = (fundamentals or {}).get("days_to_earnings")
@@ -677,11 +688,21 @@ def analyze_sepa_vcp(
         elif -12.0 <= dist <= 7.5:
             score += 3.0
 
-    # Minervini Blue-Dot bonus: RS New High Before Price
+    # Minervini Blue-Dot + Multi-Strategy Confluence Bonuses
     if rs_info.get("rs_new_high_before_price"):
         score += 4.0
+    if quant["pocket_pivot"]["detected"]:
+        score += 4.0
+    if quant["ttm_squeeze"]["squeeze_fire_long"]:
+        score += 4.0
+    elif quant["ttm_squeeze"]["squeeze_on"]:
+        score += 2.0
+    if quant["episodic_pivot"]["detected"] or quant["high_tight_flag"]["detected"]:
+        score += 5.0
+    if quant["three_weeks_tight"]["detected"] and tt["passed"]:
+        score += 3.0
 
-    if vcp.get("is_extended"):
+    if vcp.get("is_extended") or quant["is_atr_overextended"]:
         score -= 12.0
     if earnings_within_14d:
         score -= 8.0
@@ -811,11 +832,64 @@ def analyze_sepa_vcp(
         }
     )
 
-    if vcp["is_extended"]:
+    if quant["pocket_pivot"]["detected"]:
+        why_points.append(
+            {
+                "topic": "Pocket Pivot Detetado (Morales & Kacher)",
+                "text": quant["pocket_pivot"]["summary"],
+                "tone": "positive",
+            }
+        )
+    if quant["ttm_squeeze"]["squeeze_fire_long"] or quant["ttm_squeeze"]["squeeze_on"]:
+        why_points.append(
+            {
+                "topic": "TTM Squeeze (John Carter)",
+                "text": quant["ttm_squeeze"]["summary"],
+                "tone": "positive",
+            }
+        )
+    if quant["episodic_pivot"]["detected"]:
+        why_points.append(
+            {
+                "topic": "Episodic Pivot (Qullamaggie)",
+                "text": (
+                    f"Gap/explosão de +{quant['episodic_pivot']['gap_pct']}% em {quant['episodic_pivot']['date']} "
+                    f"com volume {quant['episodic_pivot']['volume_ratio']}x — possível catalisador institucional."
+                ),
+                "tone": "positive",
+            }
+        )
+    if quant["high_tight_flag"]["detected"]:
+        why_points.append(
+            {
+                "topic": "High Tight Flag (O'Neil / Qullamaggie)",
+                "text": (
+                    f"Subida explosiva de +{quant['high_tight_flag']['pole_gain_pct']}% seguida de bandeira apertada "
+                    f"({quant['high_tight_flag']['flag_depth_pct']}%) — padrão de alta potência."
+                ),
+                "tone": "positive",
+            }
+        )
+    if quant["stop_too_tight_for_adr"]:
+        why_points.append(
+            {
+                "topic": f"Atenção ao ADR% ({quant['adr_pct_20d']}%/dia)",
+                "text": (
+                    f"Este ativo varia {quant['adr_pct_20d']}% por dia; um stop de -{trade_plan['stop_loss_pct']}% "
+                    f"equivale a apenas {quant['stop_in_adr_multiples']}x ADR (risco de ruído diário acionar o stop)."
+                ),
+                "tone": "warning",
+            }
+        )
+
+    if vcp["is_extended"] or quant["is_atr_overextended"]:
         why_points.append(
             {
                 "topic": "Aviso: Preço Esticado (Não Perseguir)",
-                "text": "O ativo está demasiado afastado do pivô ou da SMA 50. Entrar agora aumenta o risco de pullback imediato ao stop.",
+                "text": (
+                    f"O ativo está esticado ({quant['atr_extension_sma50']}x ATR face à SMA 50). "
+                    f"Entrar agora aumenta o risco de pullback imediato ao stop."
+                ),
                 "tone": "danger",
             }
         )
@@ -845,6 +919,7 @@ def analyze_sepa_vcp(
         "liquidity": liquidity,
         "trend_template": tt,
         "vcp": vcp,
+        "quant": quant,
         "trade_plan": trade_plan,
         "earnings_within_14d": earnings_within_14d,
         "next_earnings_date": next_earnings_date,

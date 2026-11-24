@@ -134,6 +134,27 @@ export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAl
     onAlertsChanged?.()
   }
 
+  const handleSendMorningBriefing = async () => {
+    try {
+      setChecking(true)
+      const res = await api.sendMorningBriefingNow()
+      const d = res.delivery || {}
+      setFeedback({
+        type: d.telegram || d.discord ? 'success' : 'info',
+        text:
+          d.telegram || d.discord
+            ? 'Briefing Matinal enviado com sucesso para o teu Telegram/Discord!'
+            : 'Briefing Matinal gerado e guardado no Feed (configura Telegram/Discord para receber no telemóvel).',
+      })
+      await load()
+      onAlertsChanged?.()
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message })
+    } finally {
+      setChecking(false)
+    }
+  }
+
   const handleTestChannels = async () => {
     try {
       const res = await api.testAlertChannels()
@@ -215,15 +236,26 @@ export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAl
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {tab === 'feed' && (
             <>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-slate-400">Histórico de notificações</span>
-                <button
-                  onClick={handleMarkRead}
-                  className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
-                >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  Marcar tudo como lido
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleSendMorningBriefing}
+                    disabled={checking}
+                    className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-semibold"
+                    title="Envia agora o Briefing Matinal (Macro + IBD + Breadth + Top Setups) para o Telegram"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    Enviar Briefing Agora
+                  </button>
+                  <button
+                    onClick={handleMarkRead}
+                    className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    Marcar lido
+                  </button>
+                </div>
               </div>
 
               {loading && !data ? (

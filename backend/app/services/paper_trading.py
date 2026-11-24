@@ -573,11 +573,53 @@ class PaperTradingService:
             )
 
         r_multiples = []
+        win_rs = []
+        loss_rs = []
         for p in closed_pos:
             risk_eur = float(p["capital_allocated"]) * (float(p["stop_loss_pct"]) / 100.0)
             if risk_eur > 0:
-                r_multiples.append(float(p["pnl_eur"]) / risk_eur)
+                rm = float(p["pnl_eur"]) / risk_eur
+                r_multiples.append(rm)
+                if rm > 0:
+                    win_rs.append(rm)
+                else:
+                    loss_rs.append(abs(rm))
+
         avg_r = round(sum(r_multiples) / len(r_multiples), 2) if r_multiples else 0.0
+        avg_win_r = round(sum(win_rs) / len(win_rs), 2) if win_rs else 0.0
+        avg_loss_r = round(sum(loss_rs) / len(loss_rs), 2) if loss_rs else 0.0
+
+        # Van K. Tharp Expectancy & System Quality Number (SQN)
+        n_r = len(r_multiples)
+        win_prob = (len(win_rs) / n_r) if n_r > 0 else 0.0
+        loss_prob = 1.0 - win_prob
+        expectancy_r = round((win_prob * avg_win_r) - (loss_prob * avg_loss_r), 3) if n_r > 0 else 0.0
+
+        sqn = None
+        sqn_grade = "Amostra curta (< 5 trades)"
+        if n_r >= 2:
+            mean_r = sum(r_multiples) / n_r
+            variance = sum((x - mean_r) ** 2 for x in r_multiples) / max(n_r - 1, 1)
+            std_r = math.sqrt(variance)
+            if std_r > 0:
+                sqn = round((math.sqrt(min(n_r, 100)) * mean_r) / std_r, 2)
+            elif mean_r > 0:
+                sqn = 5.0
+            else:
+                sqn = 0.0
+
+            if n_r < 5:
+                sqn_grade = f"Preliminar ({n_r}/5 trades)"
+            elif sqn >= 5.0:
+                sqn_grade = "Santo Graal (≥ 5.0)"
+            elif sqn >= 3.0:
+                sqn_grade = "Excelente (3.0–4.9)"
+            elif sqn >= 2.0:
+                sqn_grade = "Bom / Profissional (2.0–2.9)"
+            elif sqn >= 1.6:
+                sqn_grade = "Aceitável (1.6–1.9)"
+            else:
+                sqn_grade = "Fraco (< 1.6 — Rever Regras)"
 
         return {
             "fx_rate_eurusd": fx_rate,
@@ -598,6 +640,11 @@ class PaperTradingService:
                 "profit_factor": profit_factor,
                 "max_drawdown_pct": round(max_dd_pct, 2),
                 "avg_r_multiple": avg_r,
+                "avg_win_r": avg_win_r,
+                "avg_loss_r": avg_loss_r,
+                "expectancy_r": expectancy_r,
+                "sqn": sqn,
+                "sqn_grade": sqn_grade,
                 "auto_stops_count": sum(1 for p in closed_pos if p["status"] == "CLOSED_STOP"),
                 "partial_2r_count": sum(1 for p in positions if int(p.get("partial_2r_taken") or 0) == 1),
             },

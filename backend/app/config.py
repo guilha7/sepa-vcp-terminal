@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     discord_webhook_url: str = ""
 
+    # Optional access password when deployed publicly online (leave empty on localhost)
+    app_access_password: str = ""
+
     # Cache TTLs (seconds)
     cache_ttl_prices: int = 600        # 10 min
     cache_ttl_news: int = 900          # 15 min

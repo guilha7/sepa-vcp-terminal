@@ -30,18 +30,20 @@ Se quiseres tirar o máximo partido do terminal com disciplina, segue sempre est
 
 ### 1. Macro & Rotação (*"Onde está o dinheiro?"*)
 
-Antes de comprar qualquer ação ou criptomoeda, este ecrã responde a duas perguntas essenciais: **"O mercado está favorável?"** e **"Que setores estão a liderar?"**.
+Antes de comprar qualquer ação ou criptomoeda, este ecrã organiza-se em **3 abas simples** para nunca sobrecarregar o olhar:
 
-- **Semáforo Macro (Topo):**
-  - 🟢 **Risk-On (Verde):** Tendência de alta saudável nos índices (`SPY`, `QQQ`, `BTC`), volatilidade (`VIX`) calma e juros/dólar controlados. É o melhor ambiente para comprar breakouts.
-  - 🟡 **Cautela / Neutro (Amarelo):** Sinais mistos. Sê muito seletivo, usa posições mais pequenas e realiza lucros parciais em 2R.
-  - 🔴 **Risk-Off (Vermelho):** Mercado fraco ou em queda. A regra de ouro de Minervini é proteger o capital: evita novas compras agressivas e aguarda melhoria.
-- **Cartões de Indicadores Macro:** Mostra `SPY`, `QQQ`, `BTC-USD`, `^VIX` (medo do mercado), `^TNX` (juros a 10 anos) e `DXY` (dólar), indicando se cada um está acima ou abaixo das médias de 50 e 200 dias. Clicar em `SPY`, `QQQ` ou `BTC-USD` abre logo o seu Raio-X.
-- **Mapa de Rotação Setorial:**
-  - Podes alternar entre **11 Setores EUA (ETFs)** e **Setores Cripto**, e escolher o período (**1 Semana**, **1 Mês**, **3 Meses**).
-  - **Onde o capital está a entrar (Líderes — Verde):** Setores com maior Força Relativa — é aqui que deves procurar compras.
-  - **De onde o capital está a sair (Atrasados — Vermelho):** Setores fracos — evita comprar contra a corrente.
-  - Clicar em qualquer ETF setorial (ex: `XLK`, `XLE`, `XLP`) abre logo o gráfico completo no Raio-X.
+- **Semáforo Macro (Topo — sempre visível):**
+  - 🟢 **Risk-On (Verde):** Tendência de alta saudável nos índices (`SPY`, `QQQ`, `BTC`), volatilidade (`VIX`) calma e juros/dólar controlados.
+  - 🟡 **Cautela / Neutro (Amarelo):** Sinais mistos — sê seletivo e reduz tamanho.
+  - 🔴 **Risk-Off (Vermelho):** Mercado fraco — prioridade absoluta é proteger o capital.
+- **Aba 1 — Pulso Macro, IBD & Breadth:**
+  - **IBD Market Timing (William O'Neil):** conta **Dias de Distribuição** em `SPY` e `QQQ` nos últimos 25 pregões (≥ 5 = distribuição pesada) e deteta **Follow-Through Days** (sinal institucional de possível fundo).
+  - **Stockbee Market Breadth:** mostra que percentagem de ativos está acima da SMA 50/200 e o rácio de dias **+4% vs -4%** para saber se os breakouts estão a funcionar hoje.
+- **Aba 2 — Onde Está o Dinheiro? (Rotação Setorial):**
+  - Alterna entre **11 Setores EUA (ETFs)** e **Setores Cripto** (1S / 1M / 3M) vendo claramente **Líderes (Inflow)** vs **Atrasados (Outflow)**.
+- **Aba 3 — Derivados Cripto & Altseason (Binance Futures — 0€):**
+  - **Termómetro Altseason (`ETH/BTC`):** indica se o dinheiro está defensivo em **Bitcoin** ou a rodar para **Altcoins**.
+  - **Funding Rate, Open Interest 24h & Baleias Long/Short Ratio:** deteta excesso de euforia (*Long Squeeze*), potencial *Short Squeeze* e entrada real de dinheiro novo institucional.
 
 ---
 
@@ -53,12 +55,16 @@ Este é o radar automático que analisa dezenas de ações líquidas e as Top 30
   - À esquerda tens a lista ordenada por **Score (0 a 100)**.
   - À direita vês imediatamente o **gráfico candlestick** do ativo selecionado, com as médias móveis, linha RS, contrações VCP, linha de Pivô e linha de Stop (-6%).
   - **Dica de produtividade:** usa as setas **`↑`** e **`↓`** do teclado para percorrer a lista e rever 20 gráficos em 1 minuto. Prime **`Enter`** para abrir o Raio-X completo do ativo selecionado.
-- **O que significam as etiquetas (Badges):**
+- **O que significam as etiquetas (Badges) & Filtros Multi-Estratégia:**
   - `BREAKOUT VCP`: O ativo rompeu o pivô de resistência com volume forte (≥ 1.5x acima da média).
-  - `VCP PRONTO (VDU)`: A volatilidade apertou (`T1 → T2 → T3`) e o volume "secou" (*Volume Dry-Up*) junto à resistência — ponto ideal para colocar um **Alerta Pivô**.
-  - `STAGE 2 (8/8)`: Cumpre todas as 8 regras rígidas de tendência de Mark Minervini.
-  - `● RS NEW HIGH`: A Força Relativa atingiu novo máximo de 52 semanas **antes** do preço — um forte sinal de acumulação institucional.
-  - 🔴 `EARNINGS EM X DIAS`: **Alerta vermelho crítico!** A empresa vai apresentar resultados nos próximos 14 dias. Evita abrir posições novas antes de resultados devido ao risco de *gap* noturno acima do stop de 6%.
+  - `VCP PRONTO (VDU)`: A volatilidade apertou (`T1 → T2 → T3`) e o volume "secou" (*Volume Dry-Up*) junto à resistência.
+  - `STAGE 2 (8/8)` & `S1–S4`: As 8 regras de Minervini + as 4 Fases de Stan Weinstein (Base, Alta, Topo, Queda).
+  - `POCKET PIVOT`: Sinal antecipado de acumulação institucional (Gil Morales & Chris Kacher) junto à EMA 10 / SMA 50.
+  - `TTM SQUEEZE`: Compressão de volatilidade (Bollinger dentro de Keltner — John Carter) pronta a disparar.
+  - `EPISODIC PIVOT` & `HTF` & `3 WEEKS TIGHT`: Gaps explosivos (+10% com volume — Qullamaggie), bandeiras de alta potência e 3 semanas de fechos apertados (O'Neil).
+  - `ADR%`: Variação média diária do ativo (Qullamaggie) — ajuda a evitar ativos parados e a confirmar se o teu stop de 6% não fica apertado demais.
+  - `● RS NEW HIGH`: A Força Relativa atingiu novo máximo de 52 semanas **antes** do preço.
+  - 🔴 `EARNINGS EM X DIAS`: **Alerta vermelho crítico!** Resultados nos próximos 14 dias.
 - **"Porque é que isto é uma oportunidade?":** Explica em linguagem simples porque é que o ativo teve aquela pontuação, destacando pontos fortes e avisos de risco.
 - **Novo Scan Completo:** Clica no botão verde no topo direito para atualizar todo o mercado — vais ver uma **barra de progresso em tempo real** a indicar qual o ativo a ser analisado.
 - **Botão Watchlist:** Permite adicionar ou remover tickers personalizados (ex: `RKLB`, `HIMS`, `SOL-USD`) sempre que quiseres.

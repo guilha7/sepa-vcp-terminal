@@ -1,9 +1,29 @@
 const API_BASE = '/api'
+const TOKEN_STORAGE_KEY = 'sepa_access_token'
+
+export function getStoredAccessToken() {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function setStoredAccessToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token)
+    else localStorage.removeItem(TOKEN_STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
 
 async function request(path, options = {}) {
+  const token = getStoredAccessToken()
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { 'X-Access-Token': token } : {}),
       ...(options.headers || {}),
     },
     ...options,
@@ -22,12 +42,17 @@ async function request(path, options = {}) {
         : Array.isArray(data?.detail)
           ? data.detail.map((e) => e.msg || JSON.stringify(e)).join('; ')
           : `Erro HTTP ${res.status}`
-    throw new Error(msg)
+    const err = new Error(msg)
+    err.status = res.status
+    throw err
   }
   return data
 }
 
 export const api = {
+  getAuthStatus: () => request('/auth/status'),
+  login: (password) =>
+    request('/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
   getHealth: () => request('/health'),
 
   // Module 1: Macro & Sector Rotation
@@ -49,6 +74,8 @@ export const api = {
   streamScanner: (assetType = '', { onProgress, onComplete, onError }) => {
     const params = new URLSearchParams({ force_refresh: 'true' })
     if (assetType) params.set('asset_type', assetType)
+    const token = getStoredAccessToken()
+    if (token) params.set('access_token', token)
     const es = new EventSource(`${API_BASE}/scanner/stream?${params.toString()}`)
     es.onmessage = (evt) => {
       try {
@@ -141,6 +168,7 @@ export const api = {
   updateAlertChannels: (payload) =>
     request('/alerts/channels', { method: 'POST', body: JSON.stringify(payload) }),
   testAlertChannels: () => request('/alerts/test', { method: 'POST' }),
+  sendMorningBriefingNow: () => request('/alerts/send-morning-briefing', { method: 'POST' }),
   exportAlertsToCloud: () => request('/alerts/export-cloud', { method: 'POST' }),
 
   // Module 6 / Settings: Runtime AI, Risk, Universe Packs, Cache & Scheduler

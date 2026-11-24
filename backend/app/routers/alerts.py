@@ -71,6 +71,26 @@ def test_notification_channels():
     return {"status": "sent", "delivery": sent, "channels": notification_service.get_channel_status()}
 
 
+@router.post("/send-morning-briefing")
+def send_morning_briefing_now():
+    """Sends the rich Morning Briefing (Macro + IBD + Breadth + Leaders + Crypto + Top Setups) to Telegram/Discord."""
+    from app.services.macro_rotation import compute_macro_and_rotation
+    from app.services.scanner_service import run_sepa_vcp_scan
+    from cloud_monitor import build_morning_briefing_message
+
+    macro = compute_macro_and_rotation(force_refresh=False)
+    scan = run_sepa_vcp_scan(asset_type=None, force_refresh=False)
+    title, msg, level = build_morning_briefing_message(macro, scan)
+    sent = notification_service.dispatch(
+        title=title,
+        message=msg,
+        level=level,
+        category="MORNING_BRIEFING",
+        persist_alert=True,
+    )
+    return {"status": "sent", "title": title, "preview": msg, "delivery": sent}
+
+
 @router.post("/export-cloud")
 def export_alerts_to_cloud_json():
     """Exports active SQLite price alerts to alertas_cloud.json for GitHub Actions 24/7 monitoring."""

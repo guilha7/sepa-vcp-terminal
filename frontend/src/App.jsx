@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { api } from './services/api'
 import { Layout } from './components/Layout'
+import { LoginGate } from './components/LoginGate'
+import { OnboardingGuide } from './components/OnboardingGuide'
 import { CommandPalette } from './components/CommandPalette'
 import { AlertsDrawer } from './components/AlertsDrawer'
 import { MacroRotationModule } from './modules/MacroRotationModule'
@@ -18,6 +20,52 @@ export default function App() {
   const [health, setHealth] = useState(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [alertsOpen, setAlertsOpen] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
+  const [locked, setLocked] = useState(false)
+
+  const [guideOpen, setGuideOpen] = useState(() => {
+    try {
+      return localStorage.getItem('sepa_guide_dismissed') !== '1'
+    } catch {
+      return true
+    }
+  })
+
+  const checkAuth = useCallback(async () => {
+    try {
+      const st = await api.getAuthStatus()
+      setLocked(Boolean(st.password_required && !st.authenticated))
+    } catch {
+      setLocked(false)
+    } finally {
+      setAuthChecked(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
+
+  const handleDismissGuide = () => {
+    setGuideOpen(false)
+    try {
+      localStorage.setItem('sepa_guide_dismissed', '1')
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleToggleGuide = () => {
+    setGuideOpen((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('sepa_guide_dismissed', next ? '0' : '1')
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -34,7 +82,6 @@ export default function App() {
     return () => clearInterval(id)
   }, [fetchHealth])
 
-  // Global Ctrl+K / Cmd+K Command Palette shortcut
   useEffect(() => {
     const onKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -61,6 +108,25 @@ export default function App() {
     setAlertsOpen(true)
   }
 
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-terminal-bg text-xs text-slate-400">
+        A iniciar SEPA/VCP Desk...
+      </div>
+    )
+  }
+
+  if (locked) {
+    return (
+      <LoginGate
+        onUnlocked={() => {
+          setLocked(false)
+          fetchHealth()
+        }}
+      />
+    )
+  }
+
   return (
     <>
       <Layout
@@ -69,8 +135,16 @@ export default function App() {
         onQuickSearch={handleOpenXRay}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenAlerts={() => setAlertsOpen(true)}
+        onToggleGuide={handleToggleGuide}
+        guideOpen={guideOpen}
         health={health}
       >
+        <OnboardingGuide
+          visible={guideOpen}
+          onDismiss={handleDismissGuide}
+          onSelectTab={(tab) => setActiveTab(tab)}
+        />
+
         {activeTab === 'macro' && <MacroRotationModule onOpenXRay={handleOpenXRay} />}
         {activeTab === 'scanner' && (
           <ScannerModule
