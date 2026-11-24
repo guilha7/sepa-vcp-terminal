@@ -1,0 +1,24 @@
+{
+  "check_macro_shift": true,
+  "check_vcp_breakouts": true,
+  "breakout_min_score": 70,
+  "price_alerts": [
+    {
+      "id": "exemplo-btc-100k",
+      "ticker": "BTC-USD",
+      "condition": "ABOVE",
+      "target_price": 100000,
+      "notes": "Exemplo (altera enabled para true para ativar)",
+      "enabled": false
+    },
+    {
+      "id": "exemplo-nvda-180",
+      "ticker": "NVDA",
+      "condition": "ABOVE",
+      "target_price": 180,
+      "notes": "Exemplo de pivô (altera enabled para true para ativar)",
+      "enabled": false
+    }
+  ],
+  "custom_watchlist": []
+}
