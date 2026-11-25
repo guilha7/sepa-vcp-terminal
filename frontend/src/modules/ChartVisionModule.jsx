@@ -297,9 +297,17 @@ export function ChartVisionModule({ onSimulateTrade }) {
                 </div>
 
                 {/* Structured Trade Plan */}
-                <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/30 p-3.5 space-y-2">
+                <div
+                  className={`rounded-lg p-3.5 space-y-2 border ${
+                    plan?.bias === 'EVITAR'
+                      ? 'bg-rose-500/10 border-rose-500/40'
+                      : 'bg-emerald-500/5 border-emerald-500/30'
+                  }`}
+                >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-emerald-300">4. Sugestão de Plano (Stop &lt;= 6%)</span>
+                    <span className={`font-bold ${plan?.bias === 'EVITAR' ? 'text-rose-300' : 'text-emerald-300'}`}>
+                      4. Sugestão de Plano (Stop &lt;= 6%)
+                    </span>
                     <StatusBadge
                       variant={
                         plan?.bias === 'COMPRA_NO_PIVO'
@@ -327,7 +335,7 @@ export function ChartVisionModule({ onSimulateTrade }) {
                     </div>
                   </div>
 
-                  {result.ticker_context?.sepa && (
+                  {result.ticker_context?.sepa && plan?.bias !== 'EVITAR' && (
                     <div className="pt-2">
                       <button
                         onClick={() =>

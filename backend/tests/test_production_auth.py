@@ -41,19 +41,34 @@ def test_friends_mode_admin_lock_and_isolated_paper_trading():
         settings.app_access_password = ""
         settings.admin_password = "SoParaOMeuAdmin99"
 
-        # 1. Friends CANNOT read/edit Settings or touch Telegram channels (403 Forbidden)
+        # 1. Friends CANNOT read/edit Settings, touch Telegram channels, or create/delete Price Alerts (403 Forbidden)
         assert client.get("/api/settings").status_code == 403
         assert client.put("/api/settings", json={"default_capital_eur": 9999}).status_code == 403
         assert client.post("/api/alerts/channels", json={"telegram_chat_id": "123"}).status_code == 403
+        assert client.post(
+            "/api/alerts/price",
+            json={"ticker": "NVDA", "condition": "ABOVE", "target_price": 150.0, "notes": "Amigo"},
+        ).status_code == 403
+        assert client.post("/api/alerts/price/check").status_code == 403
+        assert client.delete("/api/alerts/price/99999").status_code == 403
 
-        # 2. Admin login unlocks Settings
+        # 2. Admin login unlocks Settings and Price Alerts
         assert client.post("/api/auth/admin-login", json={"password": "errada"}).status_code == 403
         adm = client.post("/api/auth/admin-login", json={"password": "SoParaOMeuAdmin99"})
         assert adm.status_code == 200
         adm_token = adm.json()["admin_token"]
         assert client.get("/api/settings", headers={"X-Admin-Token": adm_token}).status_code == 200
 
-        # 3. Friends freely use Paper Trading with completely isolated positions per X-User-Name!
+        pa = client.post(
+            "/api/alerts/price",
+            headers={"X-Admin-Token": adm_token},
+            json={"ticker": "NVDA", "condition": "ABOVE", "target_price": 9999.0, "notes": "Admin test"},
+        )
+        assert pa.status_code == 200
+        pa_id = pa.json()["alert"]["id"]
+        assert client.delete(f"/api/alerts/price/{pa_id}", headers={"X-Admin-Token": adm_token}).status_code == 200
+
+        # 3. Friends freely use Paper Trading with completely isolated positions + personal base_capital per X-User-Name!
         r_j = client.post(
             "/api/paper/positions",
             headers={"X-User-Name": "Joao"},
@@ -70,9 +85,11 @@ def test_friends_mode_admin_lock_and_isolated_paper_trading():
         assert r_d.status_code == 200
         p_diogo = r_d.json()["position"]["id"]
 
-        port_j = client.get("/api/paper/portfolio", headers={"X-User-Name": "Joao"}).json()
-        port_d = client.get("/api/paper/portfolio", headers={"X-User-Name": "Diogo"}).json()
+        port_j = client.get("/api/paper/portfolio?base_capital=500", headers={"X-User-Name": "Joao"}).json()
+        port_d = client.get("/api/paper/portfolio?base_capital=250", headers={"X-User-Name": "Diogo"}).json()
 
+        assert port_j["metrics"]["base_capital_eur"] == 500.0
+        assert port_d["metrics"]["base_capital_eur"] == 250.0
         assert any(p["id"] == p_joao for p in port_j["positions"])
         assert not any(p["id"] == p_diogo for p in port_j["positions"])
         assert any(p["id"] == p_diogo for p in port_d["positions"])

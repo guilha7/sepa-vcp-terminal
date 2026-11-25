@@ -27,8 +27,9 @@ export function RiskPaperModule({
   onOpenXRay,
   defaultCapitalEur = 100,
   defaultStopLossPct = 6.0,
+  defaultRiskPct = 2.0,
 }) {
-  // Calculator state (synced with Settings defaults, hard ceiling 7%, live EUR/USD conversion!)
+  // Calculator state (synced with Personal Preferences / Settings defaults, hard ceiling 7%, live EUR/USD conversion!)
   const [ticker, setTicker] = useState('NVDA')
   const [assetType, setAssetType] = useState('stock')
   const [assetCurrency, setAssetCurrency] = useState('USD')
@@ -36,6 +37,8 @@ export function RiskPaperModule({
   const [capitalEur, setCapitalEur] = useState(defaultCapitalEur)
   const [entryPrice, setEntryPrice] = useState(140)
   const [stopLossPct, setStopLossPct] = useState(defaultStopLossPct)
+  const [sizingMode, setSizingMode] = useState('capital_allocation')
+  const [riskPctAccount, setRiskPctAccount] = useState(defaultRiskPct)
 
   useEffect(() => {
     setCapitalEur(defaultCapitalEur)
@@ -44,8 +47,10 @@ export function RiskPaperModule({
   useEffect(() => {
     setStopLossPct(Math.min(defaultStopLossPct, 7.0))
   }, [defaultStopLossPct])
-  const [sizingMode, setSizingMode] = useState('capital_allocation')
-  const [riskPctAccount, setRiskPctAccount] = useState(2.0)
+
+  useEffect(() => {
+    setRiskPctAccount(defaultRiskPct)
+  }, [defaultRiskPct])
   const [customTarget, setCustomTarget] = useState('')
   const [allowFractional, setAllowFractional] = useState(true)
 
@@ -127,7 +132,9 @@ export function RiskPaperModule({
     try {
       if (refresh) setRefreshing(true)
       else setLoadingPort(true)
-      const res = refresh ? await api.refreshPaperPortfolio() : await api.getPaperPortfolio(false)
+      const res = refresh
+        ? await api.refreshPaperPortfolio(defaultCapitalEur)
+        : await api.getPaperPortfolio(false, defaultCapitalEur)
       setPortfolio(res)
       if (res?.fx_rate_eurusd) setFxRate(res.fx_rate_eurusd)
 
@@ -153,7 +160,7 @@ export function RiskPaperModule({
 
   useEffect(() => {
     loadPortfolio(false)
-  }, [])
+  }, [defaultCapitalEur])
 
   const handleSimulateEntry = async () => {
     if (!ticker.trim() || !calcResult || calcResult.quantity <= 0) return

@@ -142,6 +142,37 @@ export const api = {
     return () => es.close()
   },
   getQuickChart: (ticker) => request(`/scanner/chart/${encodeURIComponent(ticker)}`),
+  getUsDiscoveryPresets: () => request('/scanner/us-discovery/presets'),
+  streamUsDiscovery: (preset = 'sepa_leaders', limit = 70, forceRefresh = false, { onProgress, onComplete, onError }) => {
+    const params = new URLSearchParams({
+      preset,
+      limit: String(limit),
+      force_refresh: String(Boolean(forceRefresh)),
+    })
+    const token = getStoredAccessToken()
+    if (token) params.set('access_token', token)
+    const es = new EventSource(`${API_BASE}/scanner/us-discovery/stream?${params.toString()}`)
+    es.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data)
+        if (msg.type === 'progress') onProgress?.(msg)
+        else if (msg.type === 'complete') {
+          es.close()
+          onComplete?.(msg.result)
+        } else if (msg.type === 'error') {
+          es.close()
+          onError?.(new Error(msg.message || 'Erro durante descoberta EUA'))
+        }
+      } catch {
+        // ignore parse glitch
+      }
+    }
+    es.onerror = () => {
+      es.close()
+      onError?.(new Error('Ligação SSE interrompida durante descoberta EUA.'))
+    }
+    return () => es.close()
+  },
   getWatchlist: () => request('/scanner/watchlist'),
   addWatchlistTicker: (ticker, asset_type) =>
     request('/scanner/watchlist', {
@@ -172,8 +203,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  getPaperPortfolio: (refresh = false) =>
-    request(`/paper/portfolio?refresh=${refresh}`),
+  getPaperPortfolio: (refresh = false, baseCapital = null) => {
+    const params = new URLSearchParams({ refresh: String(Boolean(refresh)) })
+    if (baseCapital && Number(baseCapital) > 0) params.set('base_capital', String(Number(baseCapital)))
+    return request(`/paper/portfolio?${params.toString()}`)
+  },
   openPaperPosition: (payload) =>
     request('/paper/positions', {
       method: 'POST',
@@ -197,8 +231,10 @@ export const api = {
     }),
   deletePaperPosition: (id) =>
     request(`/paper/positions/${id}`, { method: 'DELETE' }),
-  refreshPaperPortfolio: () =>
-    request('/paper/refresh', { method: 'POST' }),
+  refreshPaperPortfolio: (baseCapital = null) => {
+    const q = baseCapital && Number(baseCapital) > 0 ? `?base_capital=${Number(baseCapital)}` : ''
+    return request(`/paper/refresh${q}`, { method: 'POST' })
+  },
 
   // Alerts & External Notifications (Telegram / Discord + Price Alerts)
   getAlertsOverview: (limit = 40) => request(`/alerts?limit=${limit}`),

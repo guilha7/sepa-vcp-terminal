@@ -12,6 +12,7 @@ from app.services.market_data import (
 )
 from app.services.minervini_vcp import analyze_sepa_vcp, assign_cross_sectional_rs_ratings
 from app.services.notifications import notification_service
+from app.services.us_discovery import screen_all_us_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,133 @@ def run_sepa_vcp_scan(
             return _format_scan_response(preliminary, now_ts, warnings=list(dict.fromkeys(warnings))[:6], from_cache=False)
         finally:
             _SCAN_IN_PROGRESS = False
+
+
+def run_us_discovery_scan(
+    preset: str = "sepa_leaders",
+    limit: int = 70,
+    force_refresh: bool = False,
+    progress_callback: Optional[ProgressFn] = None,
+) -> dict[str, Any]:
+    """
+    2-Stage All-US Discovery Scanner (~7,000 NYSE/NASDAQ/AMEX stocks):
+    Stage 1 (~1s): Pre-screen entire US stock market for Stage-2 / momentum leaders (0€ / no API key).
+    Stage 2 (~15-25s): Deep SEPA/VCP + Multi-Strategy Quant + Earnings check on the top discovered stocks.
+    Results are cached 30 min per preset in SQLite without altering the admin's global watchlist.
+    """
+    capped_limit = max(20, min(int(limit), 100))
+    cache_key = f"scan:us_discovery:{preset}:{capped_limit}"
+    if not force_refresh:
+        cached = db.cache_get(cache_key)
+        if cached and isinstance(cached, dict):
+            if progress_callback:
+                progress_callback(100, 100, "CACHE", "Descoberta EUA carregada da cache SQLite")
+            cached["from_cache"] = True
+            return cached
+
+    if progress_callback:
+        progress_callback(2, 100, "NYSE/NASDAQ", "Fase 1: A filtrar todas as ~7.000 ações dos EUA...")
+
+    stage1 = screen_all_us_candidates(preset=preset, limit=capped_limit)
+    tickers = stage1["tickers"]
+    meta_map = stage1.get("meta") or {}
+    warnings: list[str] = list(stage1.get("warnings") or [])
+    total = max(len(tickers), 1)
+
+    if progress_callback:
+        progress_callback(
+            12,
+            100,
+            f"{stage1['total_matched_stage1']} Stage 2",
+            f"Fase 1 OK ({stage1['total_matched_stage1']} ações nos EUA) → A descarregar OHLCV das Top {len(tickers)}...",
+        )
+
+    fetch_list = list(dict.fromkeys(["SPY"] + tickers))
+    dfs, sources, batch_warnings = get_batch_ohlcv(fetch_list, period="15mo", force_refresh=False)
+    warnings.extend(batch_warnings)
+    spy_df = dfs.get("SPY")
+
+    watchlist_set = {w["ticker"] for w in db.get_watchlist(only_enabled=False)}
+    preliminary: list[dict[str, Any]] = []
+
+    for idx, t in enumerate(tickers, start=1):
+        if progress_callback and (idx == 1 or idx % 3 == 0 or idx == total):
+            pct = 15 + int(round((idx / total) * 65))
+            progress_callback(pct, 100, t, f"Fase 2: Análise SEPA/VCP/Quant ({idx}/{total})")
+
+        df = dfs.get(t)
+        if df is None or len(df) < 60:
+            continue
+
+        cached_fund = db.cache_get(f"fund:{t}")
+        res = analyze_sepa_vcp(
+            ticker=t,
+            df=df,
+            benchmark_df=spy_df,
+            asset_type="stock",
+            benchmark_ticker="SPY",
+            fundamentals=cached_fund,
+            data_source=sources.get(t, "yfinance"),
+        )
+        m = meta_map.get(t) or {}
+        if not res.get("name") or res.get("name") == t:
+            res["name"] = m.get("name") or t
+        if not res.get("sector") and m.get("sector"):
+            res["sector"] = m["sector"]
+        res["is_new_discovery"] = t not in watchlist_set
+        preliminary.append(res)
+
+    preliminary = assign_cross_sectional_rs_ratings(preliminary)
+
+    # Enrich top 15 highest-scoring discoveries with Earnings & Fundamentals
+    priority = sorted(
+        [r for r in preliminary if r["liquidity"]["passed"]],
+        key=lambda x: x["score"],
+        reverse=True,
+    )[:15]
+    for e_idx, item in enumerate(priority, start=1):
+        t = item["ticker"]
+        if progress_callback:
+            pct = 82 + int(round((e_idx / max(len(priority), 1)) * 16))
+            progress_callback(pct, 100, t, f"A verificar Earnings & Fundamentais ({e_idx}/{len(priority)})")
+        fund, f_warn = get_fundamentals_and_earnings(t, force_refresh=False)
+        if f_warn:
+            warnings.extend(f_warn[:1])
+        df = dfs.get(t)
+        if df is not None:
+            updated = analyze_sepa_vcp(
+                ticker=t,
+                df=df,
+                benchmark_df=spy_df,
+                asset_type="stock",
+                benchmark_ticker="SPY",
+                fundamentals=fund,
+                data_source=sources.get(t, "yfinance"),
+            )
+            updated["trend_template"]["relative_strength"]["rs_rating"] = item["trend_template"]["relative_strength"]["rs_rating"]
+            updated["is_new_discovery"] = item.get("is_new_discovery", True)
+            item.update(updated)
+
+    preliminary.sort(key=lambda x: x["score"], reverse=True)
+    now_ts = time.time()
+    response = _format_scan_response(
+        preliminary,
+        now_ts,
+        warnings=list(dict.fromkeys(warnings))[:6],
+        from_cache=False,
+    )
+    response["discovery_meta"] = {
+        "mode": "us_all",
+        "source": stage1["source"],
+        "preset": stage1["preset"],
+        "preset_name": stage1["preset_name"],
+        "us_universe_scanned": stage1["us_universe_scanned"],
+        "total_matched_stage1": stage1["total_matched_stage1"],
+        "analyzed_count": len(preliminary),
+        "new_outside_watchlist_count": sum(1 for r in preliminary if r.get("is_new_discovery")),
+    }
+    db.cache_set(cache_key, "scan", response, 1800)  # 30 min cache
+    return response
 
 
 def _format_scan_response(

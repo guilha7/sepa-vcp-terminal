@@ -3,6 +3,7 @@ import {
   Bell,
   CheckCheck,
   CloudUpload,
+  Lock,
   Plus,
   RefreshCw,
   Send,
@@ -250,13 +251,15 @@ export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAl
                       Enviar Briefing Agora
                     </button>
                   )}
-                  <button
-                    onClick={handleMarkRead}
-                    className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
-                  >
-                    <CheckCheck className="w-3.5 h-3.5" />
-                    Marcar lido
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={handleMarkRead}
+                      className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      Marcar lido
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -297,71 +300,85 @@ export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAl
 
           {tab === 'price' && (
             <>
-              <form onSubmit={handleCreatePriceAlert} className="terminal-card p-3.5 space-y-2.5 text-xs">
-                <div className="font-semibold text-white">Novo Alerta de Preço (Vigilância de Pivô)</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    type="text"
-                    value={ticker}
-                    onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                    placeholder="Ticker"
-                    className="px-2.5 py-1.5 font-mono bg-[#070b14] border border-terminal-border rounded-lg text-white"
-                  />
-                  <select
-                    value={condition}
-                    onChange={(e) => setCondition(e.target.value)}
-                    className="px-2 py-1.5 bg-[#070b14] border border-terminal-border rounded-lg text-slate-200"
-                  >
-                    <option value="ABOVE">Cruzar Acima (&gt;=)</option>
-                    <option value="BELOW">Cair Abaixo (&lt;=)</option>
-                  </select>
-                  <input
-                    type="number"
-                    step="any"
-                    value={targetPrice}
-                    onChange={(e) => setTargetPrice(e.target.value)}
-                    placeholder="Preço alvo"
-                    className="px-2.5 py-1.5 font-mono bg-[#070b14] border border-terminal-border rounded-lg text-white"
-                  />
+              {isAdmin ? (
+                <form onSubmit={handleCreatePriceAlert} className="terminal-card p-3.5 space-y-2.5 text-xs">
+                  <div className="font-semibold text-white">Novo Alerta de Preço (Vigilância de Pivô)</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      value={ticker}
+                      onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                      placeholder="Ticker"
+                      className="px-2.5 py-1.5 font-mono bg-[#070b14] border border-terminal-border rounded-lg text-white"
+                    />
+                    <select
+                      value={condition}
+                      onChange={(e) => setCondition(e.target.value)}
+                      className="px-2 py-1.5 bg-[#070b14] border border-terminal-border rounded-lg text-slate-200"
+                    >
+                      <option value="ABOVE">Cruzar Acima (&gt;=)</option>
+                      <option value="BELOW">Cair Abaixo (&lt;=)</option>
+                    </select>
+                    <input
+                      type="number"
+                      step="any"
+                      value={targetPrice}
+                      onChange={(e) => setTargetPrice(e.target.value)}
+                      placeholder="Preço alvo"
+                      className="px-2.5 py-1.5 font-mono bg-[#070b14] border border-terminal-border rounded-lg text-white"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Nota (ex: Pivô VCP, suporte SMA 50...)"
+                      className="flex-1 px-2.5 py-1.5 bg-[#070b14] border border-terminal-border rounded-lg text-slate-200"
+                    />
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-200 font-semibold"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Criar
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="rounded-xl p-3.5 bg-amber-500/10 border border-amber-500/35 text-xs text-amber-200 flex items-start gap-2.5">
+                  <Lock className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold">Alertas de Preço (Apenas Leitura)</div>
+                    <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                      Estes alertas estão ligados ao Telegram do administrador, por isso só o administrador pode criar ou apagar alertas de preço. Podes usar os <strong>★ Favoritos</strong> para acompanhar os teus tickers!
+                    </p>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Nota (ex: Pivô VCP, suporte SMA 50...)"
-                    className="flex-1 px-2.5 py-1.5 bg-[#070b14] border border-terminal-border rounded-lg text-slate-200"
-                  />
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-200 font-semibold"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Criar
-                  </button>
-                </div>
-              </form>
+              )}
 
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-slate-400">Monitorizados automaticamente pelo scheduler</span>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleExportToCloud}
-                    className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
-                    title="Exporta alertas ativos para alertas_cloud.json (GitHub Actions 24/7)"
-                  >
-                    <CloudUpload className="w-3.5 h-3.5" />
-                    Exportar p/ Cloud
-                  </button>
-                  <button
-                    onClick={handleCheckNow}
-                    disabled={checking}
-                    className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
-                    Verificar Agora
-                  </button>
-                </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleExportToCloud}
+                      className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
+                      title="Exporta alertas ativos para alertas_cloud.json (GitHub Actions 24/7)"
+                    >
+                      <CloudUpload className="w-3.5 h-3.5" />
+                      Exportar p/ Cloud
+                    </button>
+                    <button
+                      onClick={handleCheckNow}
+                      disabled={checking}
+                      className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
+                      Verificar Agora
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -382,12 +399,14 @@ export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAl
                       </div>
                       {pa.notes && <p className="text-[11px] text-slate-400 mt-0.5">{pa.notes}</p>}
                     </div>
-                    <button
-                      onClick={() => handleDeletePriceAlert(pa.id)}
-                      className="text-slate-500 hover:text-rose-400 p-1"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDeletePriceAlert(pa.id)}
+                        className="text-slate-500 hover:text-rose-400 p-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 ))}
                 {(data?.price_alerts || []).length === 0 && (

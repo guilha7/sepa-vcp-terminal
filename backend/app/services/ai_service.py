@@ -64,51 +64,103 @@ def _extract_json_block(text: str) -> Optional[dict[str, Any]]:
     return None
 
 
-def _call_gemini(prompt: str, image_b64: Optional[str] = None, mime_type: str = "image/png") -> Optional[str]:
+def _prepare_vision_image_b64(raw_bytes: bytes, max_dim: int = 1280) -> tuple[str, str]:
+    """Resizes large screenshots to <=1280px crisp JPEG so Gemini Vision is fast and reliable."""
+    img = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+    w, h = img.size
+    if max(w, h) > max_dim:
+        ratio = max_dim / float(max(w, h))
+        img = img.resize((max(1, int(w * ratio)), max(1, int(h * ratio))), Image.Resampling.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85, optimize=True)
+    return base64.b64encode(buf.getvalue()).decode("ascii"), "image/jpeg"
+
+
+def _call_gemini_detailed(
+    prompt: str,
+    image_b64: Optional[str] = None,
+    mime_type: str = "image/jpeg",
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Calls Google Gemini REST API safely via x-goog-api-key header.
+    Returns (text, model_used, error_reason).
+    Handles Gemini 2.5 thinking parts cleanly and retries without thinkingConfig if rejected.
+    """
     api_key = settings.gemini_api_key.strip()
     if not api_key:
-        return None
+        return None, None, "Chave GEMINI_API_KEY não configurada."
+
     preferred = settings.gemini_model.strip() or "gemini-2.5-flash"
-    # Try preferred model first, then automatic free-tier fallbacks on 404
     candidates_models = list(
-        dict.fromkeys([preferred, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-1.5-flash"])
+        dict.fromkeys([preferred, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-2.0-flash-lite"])
     )
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
     if image_b64:
-        parts.append({"inline_data": {"mime_type": mime_type, "data": image_b64}})
+        parts.append({"inlineData": {"mimeType": mime_type, "data": image_b64}})
 
-    body = {
-        "contents": [{"parts": parts}],
-        "generationConfig": {
-            "temperature": 0.25,
-            "responseMimeType": "application/json",
-        },
-    }
     headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+    timeout_s = 45.0 if image_b64 else 28.0
+    last_error = "Sem resposta do Gemini."
 
-    with httpx.Client(timeout=35.0) as client:
+    with httpx.Client(timeout=timeout_s) as client:
         for model in candidates_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            gen_cfg: dict[str, Any] = {
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+            }
+            if "2.5" in model:
+                gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+
+            body = {"contents": [{"parts": parts}], "generationConfig": gen_cfg}
             try:
                 resp = client.post(url, json=body, headers=headers)
+                # If a specific model rejects thinkingConfig with 400, retry once without it
+                if resp.status_code == 400 and "thinkingConfig" in gen_cfg:
+                    gen_cfg.pop("thinkingConfig", None)
+                    resp = client.post(url, json=body, headers=headers)
+
                 if resp.status_code == 404:
-                    logger.debug("Modelo Gemini %s devolveu 404; a tentar fallback...", model)
+                    last_error = f"Modelo {model} indisponível (404)."
                     continue
-                resp.raise_for_status()
+                if resp.status_code in (401, 403):
+                    return None, None, f"Chave GEMINI_API_KEY inválida ou sem permissão (HTTP {resp.status_code})."
+                if resp.status_code == 429:
+                    last_error = f"Limite gratuito Gemini atingido temporariamente em {model} (HTTP 429)."
+                    continue
+                if resp.status_code >= 400:
+                    last_error = f"Gemini {model} devolveu HTTP {resp.status_code}."
+                    continue
+
                 data = resp.json()
                 candidates = data.get("candidates") or []
                 if not candidates:
+                    block = (data.get("promptFeedback") or {}).get("blockReason")
+                    last_error = f"Resposta bloqueada pelo filtro Gemini ({block or 'vazio'})."
                     continue
+
                 out_parts = candidates[0].get("content", {}).get("parts") or []
-                text = "".join(p.get("text", "") for p in out_parts).strip()
+                # Filter out Gemini 2.5 internal thought parts so they never corrupt JSON
+                non_thought = [p.get("text", "") for p in out_parts if not p.get("thought") and p.get("text")]
+                text = "".join(non_thought).strip()
+                if not text:
+                    text = "".join(p.get("text", "") for p in out_parts if p.get("text")).strip()
                 if text:
-                    return text
+                    return text, model, None
+                last_error = f"Modelo {model} devolveu conteúdo vazio."
+            except httpx.TimeoutException:
+                last_error = f"Timeout ao aguardar resposta do Gemini ({model})."
+                logger.warning("Timeout Gemini (%s)", model)
             except Exception as exc:
+                last_error = f"Falha de ligação ao Gemini ({model}: {type(exc).__name__})."
                 logger.warning("Chamada Gemini API (%s) falhou: %s", model, type(exc).__name__)
-                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403):
-                    break
-    return None
+    return None, None, last_error
+
+
+def _call_gemini(prompt: str, image_b64: Optional[str] = None, mime_type: str = "image/png") -> Optional[str]:
+    text, _, _ = _call_gemini_detailed(prompt, image_b64=image_b64, mime_type=mime_type)
+    return text
 
 
 def _call_ollama(prompt: str, image_b64: Optional[str] = None) -> Optional[str]:
@@ -271,11 +323,17 @@ Devolve APENAS JSON válido com esta estrutura exata:
 }}
 """.strip()
 
-    raw = _call_gemini(prompt) if provider == "gemini" else _call_ollama(prompt)
+    raw: Optional[str] = None
+    model_used: Optional[str] = None
+    err_reason: Optional[str] = None
+    if provider == "gemini":
+        raw, model_used, err_reason = _call_gemini_detailed(prompt)
+    else:
+        raw = _call_ollama(prompt)
     parsed = _extract_json_block(raw or "")
     if parsed and parsed.get("verdict"):
         result = {
-            "provider": f"Google Gemini ({settings.gemini_model})" if provider == "gemini" else f"Ollama Local ({settings.ollama_model})",
+            "provider": f"Google Gemini ({model_used or settings.gemini_model})" if provider == "gemini" else f"Ollama Local ({settings.ollama_model})",
             "ai_mode": provider,
             "catalysts": parsed.get("catalysts") or [],
             "risks": parsed.get("risks") or [],
@@ -286,7 +344,11 @@ Devolve APENAS JSON válido com esta estrutura exata:
         return result
 
     fallback = _fallback_trader_briefing(ticker, sepa_data, fundamentals, news_data)
-    fallback["note"] = f"Fallback algorítmico usado porque o provedor {provider} não devolveu resposta válida."
+    fallback["note"] = (
+        f"Fallback algorítmico usado ({err_reason})"
+        if err_reason
+        else f"Fallback algorítmico usado porque o provedor {provider} não devolveu resposta válida."
+    )
     return fallback
 
 
@@ -367,18 +429,20 @@ Ticker indicado: {ticker or 'Não especificado'} | Timeframe indicado: {timefram
 Notas do utilizador: {user_notes or 'Nenhuma'}
 {context_block}
 
-REGRA CRÍTICA DE RISCO: Qualquer sugestão de plano de trade deve respeitar rigorosamente um Stop-Loss máximo de <= 6% (nunca sugerir stop superior a 6%).
+REGRA CRÍTICA DE RISCO:
+1. Qualquer sugestão de plano de trade deve respeitar rigorosamente um Stop-Loss máximo de <= 6% (nunca sugerir stop superior a 6%).
+2. Se o ativo estiver em tendência de baixa clara (preço abaixo da SMA 200 ou queda acentuada / Stage 4), o campo "bias" TEM de ser obrigatoriamente "EVITAR" e a zona de entrada deve recomendar NÃO ENTRAR até recuperar as médias móveis e formar nova base Stage 2.
 
 Devolve APENAS JSON válido com esta estrutura exata:
 {{
   "trend_and_structure": "Análise clara da tendência principal (Stage 1/2/3/4), estrutura de máximos/mínimos e alinhamento face às médias móveis visíveis.",
   "patterns_and_levels": "Padrões detetados (VCP, Cup & Handle, Base Plana, Triângulo, Canal, etc.) e níveis-chave de Suporte, Resistência e Pivô visíveis.",
-  "risk_assessment": "Avaliação objetiva de risco: possibilidade de fakeout/bull trap, extensão excessiva acima das médias, sinais de distribuição/volume e risco de earnings se aplicável.",
+  "risk_assessment": "Avaliação objetiva de risco: possibilidade de fakeout/bull trap, queda em Stage 4 (faca a cair), extensão excessiva acima das médias, sinais de distribuição/volume e risco de earnings se aplicável.",
   "trade_plan": {{
     "bias": "COMPRA_NO_PIVO | AGUARDAR_CONSOLIDACAO | EVITAR",
-    "entry_zone": "Zona ou condição clara de entrada",
+    "entry_zone": "Zona ou condição clara de entrada (ou NÃO ENTRAR se EVITAR)",
     "stop_loss_rule": "Nível/regra de stop-loss <= 6%",
-    "targets": "Alvos 2R e 3R sugeridos",
+    "targets": "Alvos 2R e 3R sugeridos (ou N/A se EVITAR)",
     "max_stop_pct": 6.0
   }},
   "study_tip": "Uma dica pedagógica prática sobre o que o trader deve treinar o olho a observar neste gráfico específico."
@@ -391,18 +455,24 @@ Devolve APENAS JSON válido com esta estrutura exata:
     warning_msg: Optional[str] = None
 
     if provider in ("gemini", "ollama"):
-        raw = _call_gemini(prompt, image_b64=clean_b64, mime_type=mime_type) if provider == "gemini" else _call_ollama(prompt, image_b64=clean_b64)
+        if provider == "gemini":
+            opt_b64, opt_mime = _prepare_vision_image_b64(raw_bytes)
+            raw, model_used, err_reason = _call_gemini_detailed(prompt, image_b64=opt_b64, mime_type=opt_mime)
+        else:
+            raw, model_used, err_reason = _call_ollama(prompt, image_b64=clean_b64), settings.ollama_vision_model, None
+
         parsed = _extract_json_block(raw or "")
         if parsed and parsed.get("trend_and_structure"):
             report = parsed
             ai_mode = provider
             used_provider_label = (
-                f"Google Gemini Vision ({settings.gemini_model})"
+                f"Google Gemini Vision ({model_used or settings.gemini_model})"
                 if provider == "gemini"
                 else f"Ollama Vision ({settings.ollama_vision_model})"
             )
         else:
-            warning_msg = f"O motor de visão {provider} não respondeu com JSON válido; foi ativado o fallback estruturado."
+            detail = f" ({err_reason})" if err_reason else " (JSON inválido na resposta)"
+            warning_msg = f"Visão IA {provider} indisponível{detail}; ativada análise quantitativa local."
 
     if report is None:
         # Clean, transparent fallback enriched with live quantitative ticker data when ticker is supplied
@@ -413,34 +483,80 @@ Devolve APENAS JSON válido com esta estrutura exata:
             plan = sepa.get("trade_plan", {})
             fund = ticker_context.get("fundamentals", {})
             news = ticker_context.get("news", {})
+            quant = sepa.get("quant") or {}
+            metrics = tt.get("metrics") or {}
+            price_val = float(sepa.get("price") or 0)
+            sma50_val = float(metrics.get("sma50") or 0)
+            sma200_val = float(metrics.get("sma200") or 0)
+            weinstein_stage = (quant.get("weinstein") or {}).get("stage")
+            below_sma200 = bool(sma200_val > 0 and price_val < sma200_val)
+            below_sma50 = bool(sma50_val > 0 and price_val < sma50_val)
+            is_downtrend = bool(
+                below_sma200
+                or weinstein_stage == 4
+                or (below_sma50 and int(tt.get("passed_count", 0)) <= 5)
+            )
             c_str = " → ".join(f"{x:.1f}%" for x in (vcp.get("contractions_pct") or []))
+
+            if is_downtrend:
+                stage_text = (
+                    "TENDÊNCIA DE BAIXA / STAGE 4 (abaixo da SMA200)"
+                    if below_sma200
+                    else "CORREÇÃO / PERDA DE MOMENTUM (abaixo da SMA50)"
+                )
+                bias = "EVITAR"
+                risk_lead = (
+                    f"RISCO ELEVADO (Stage 4 / 'Faca a Cair'): preço ({price_val}) está abaixo da "
+                    f"{'SMA50 e SMA200' if below_sma200 else 'SMA50'}. Na metodologia Minervini/Weinstein, "
+                    "não se compram ações em queda abaixo das médias institucionais. "
+                )
+                entry_zone = "NÃO ENTRAR AGORA — aguardar recuperação acima da SMA50 e SMA200 e formação de nova base Stage 2."
+                stop_rule = "Sem entrada ativa (em futuros setups Stage 2, aplicar sempre Stop rigoroso <= 6%)."
+                targets_text = "Definir alvos 2R/3R apenas quando regressar a Stage 2 com pivô limpo."
+                study_tip = (
+                    "Regra de ouro de Mark Minervini & Stan Weinstein: nunca tentes apanhar o fundo de uma ação "
+                    "abaixo da média móvel de 200 dias (linha azul). Espera que o preço estabilize, forme uma base "
+                    "e volte acima das médias antes de arriscar capital."
+                )
+            else:
+                stage_text = "Stage 2 confirmado" if tt.get("passed") else "Em transição / Fora de Stage 2 completo"
+                bias = "COMPRA_NO_PIVO" if (tt.get("passed") and not vcp.get("is_extended")) else "AGUARDAR_CONSOLIDACAO"
+                risk_lead = (
+                    "ALERTA: Preço esticado acima da SMA50 — elevado risco de pullback/fakeout se perseguires. "
+                    if vcp.get("is_extended")
+                    else "Sem sobre-extensão crítica face à SMA50. "
+                )
+                entry_zone = f"Pivô em {plan.get('entry_pivot')} com volume >= 1.5x média 50d"
+                stop_rule = f"Stop técnico em {plan.get('stop_loss_price')} (-{plan.get('stop_loss_pct')}%, respeitando limite <= 6%)"
+                targets_text = f"2R em {plan.get('target_2r')} (+{plan.get('target_2r_pct')}%) | 3R em {plan.get('target_3r')} (+{plan.get('target_3r_pct')}%)"
+                study_tip = (
+                    "Verifica visualmente no print se os candles perto da resistência estão a ficar mais estreitos "
+                    "e se as barras de volume diminuíram antes da rutura (Volume Dry-Up)."
+                )
+
             report = {
                 "trend_and_structure": (
-                    f"[Análise Quantitativa de {ticker} — Visão IA offline] "
-                    f"Trend Template {tt.get('passed_count', 0)}/8 regras ({'Stage 2 confirmado' if tt.get('passed') else 'Fora de Stage 2 completo'}). "
-                    f"Preço atual {sepa.get('price')} face a SMA50 {tt.get('metrics', {}).get('sma50')} e SMA200 {tt.get('metrics', {}).get('sma200')}."
+                    f"[Análise Quantitativa de {ticker}] {stage_text}. "
+                    f"Trend Template {tt.get('passed_count', 0)}/8 regras. "
+                    f"Preço atual {sepa.get('price')} face a SMA50 {metrics.get('sma50')} e SMA200 {metrics.get('sma200')}."
                 ),
                 "patterns_and_levels": (
-                    f"Pivô/Resistência detetada em {vcp.get('pivot_price')} (distância {vcp.get('distance_to_pivot_pct')}%). "
+                    f"Resistência/Máximo recente em {vcp.get('pivot_price')} (distância {vcp.get('distance_to_pivot_pct')}%). "
                     f"Suporte curto (mínimo 10 sessões) em {vcp.get('tight_low')}. Amplitudes recentes: {c_str or 'N/D'}. {vcp.get('summary')}"
                 ),
                 "risk_assessment": (
-                    f"{'ALERTA: Preço esticado — risco de pullback/fakeout. ' if vcp.get('is_extended') else 'Sem sobre-extensão crítica face à SMA50. '}"
+                    f"{risk_lead}"
                     f"{'ALERTA EARNINGS em ' + str(fund.get('next_earnings_date')) + ' (< 14 dias)! ' if fund.get('earnings_within_14d') else ''}"
                     f"Sentimento de notícias: {news.get('sentiment_summary', {}).get('overall', 'Neutro')}."
                 ),
                 "trade_plan": {
-                    "bias": "COMPRA_NO_PIVO" if (tt.get("passed") and not vcp.get("is_extended")) else "AGUARDAR_CONSOLIDACAO",
-                    "entry_zone": f"Pivô em {plan.get('entry_pivot')} com volume >= 1.5x média 50d",
-                    "stop_loss_rule": f"Stop técnico em {plan.get('stop_loss_price')} (-{plan.get('stop_loss_pct')}%, respeitando limite <= 6%)",
-                    "targets": f"2R em {plan.get('target_2r')} (+{plan.get('target_2r_pct')}%) | 3R em {plan.get('target_3r')} (+{plan.get('target_3r_pct')}%)",
+                    "bias": bias,
+                    "entry_zone": entry_zone,
+                    "stop_loss_rule": stop_rule,
+                    "targets": targets_text,
                     "max_stop_pct": plan.get("stop_loss_pct", 6.0),
                 },
-                "study_tip": (
-                    "Verifica visualmente no print se os candles perto da resistência estão a ficar mais estreitos "
-                    "e se as barras de volume diminuíram antes da rutura (Volume Dry-Up). Configura GEMINI_API_KEY "
-                    "(grátis) ou Ollama (qwen2.5-vl / llama3.2-vision) no .env para leitura visual direta dos candles."
-                ),
+                "study_tip": study_tip,
             }
         else:
             color_hint = (

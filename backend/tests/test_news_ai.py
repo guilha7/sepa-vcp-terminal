@@ -74,3 +74,102 @@ def test_vision_analyzer_accepts_png_and_enforces_stop_cap(monkeypatch):
 def test_vision_analyzer_rejects_invalid_image():
     with pytest.raises(ValueError):
         analyze_chart_screenshot(image_b64="not_valid_base64_image_data!!!")
+
+
+def test_vision_stage4_downtrend_forces_evitar(monkeypatch):
+    """When price is below SMA50 & SMA200 (like GALP.LS breakdown), fallback MUST output EVITAR."""
+    monkeypatch.setattr("app.services.ai_service.detect_active_ai_provider", lambda: "fallback")
+    b64 = _sample_png_b64()
+    ticker_ctx = {
+        "sepa": {
+            "price": 18.195,
+            "status": "FORA_STAGE_2",
+            "score": 32.0,
+            "trend_template": {
+                "passed": False,
+                "passed_count": 3,
+                "metrics": {"sma50": 21.148, "sma200": 19.764},
+            },
+            "vcp": {
+                "detected": False,
+                "pivot_price": 23.04,
+                "distance_to_pivot_pct": -21.03,
+                "tight_low": 18.075,
+                "is_extended": False,
+                "contractions_pct": [12.9, 12.2, 7.3],
+                "summary": "Sem VCP.",
+            },
+            "trade_plan": {"entry_pivot": 23.04, "stop_loss_price": 21.658, "stop_loss_pct": 6.0},
+            "quant": {"weinstein": {"stage": 4, "label": "Stage 4 (Queda)"}},
+        },
+        "fundamentals": {"earnings_within_14d": False},
+        "news": {"sentiment_summary": {"overall": "Positivo"}, "items": []},
+    }
+
+    res = analyze_chart_screenshot(
+        image_b64=b64,
+        mime_type="image/png",
+        ticker="GALP.LS",
+        ticker_context=ticker_ctx,
+    )
+    rep = res["report"]
+    assert rep["trade_plan"]["bias"] == "EVITAR"
+    assert "NÃO ENTRAR" in rep["trade_plan"]["entry_zone"].upper()
+    assert "STAGE 4" in rep["trend_and_structure"].upper() or "BAIXA" in rep["trend_and_structure"].upper()
+    assert "FACA A CAIR" in rep["risk_assessment"].upper() or "STAGE 4" in rep["risk_assessment"].upper()
+
+
+def test_gemini_vision_filters_thought_parts_and_compresses_image(monkeypatch):
+    from app.config import settings
+    from app.services.ai_service import _call_gemini_detailed, _prepare_vision_image_b64
+
+    # 1. Large image compression -> JPEG <= 1280px
+    large_img = Image.new("RGB", (2400, 1400), color=(20, 30, 50))
+    buf = io.BytesIO()
+    large_img.save(buf, format="PNG")
+    comp_b64, comp_mime = _prepare_vision_image_b64(buf.getvalue(), max_dim=1280)
+    assert comp_mime == "image/jpeg"
+    decoded = Image.open(io.BytesIO(base64.b64decode(comp_b64)))
+    assert max(decoded.size) == 1280
+
+    # 2. Gemini 2.5 thought parts ignored so valid JSON is returned cleanly
+    class FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"thought": True, "text": "Internal reasoning with {bad json"},
+                                {"text": '{"verdict": "OK", "catalysts": ["A"], "risks": ["B"]}'},
+                            ]
+                        }
+                    }
+                ]
+            }
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, *args, **kwargs):
+            return FakeResp()
+
+    orig_key = settings.gemini_api_key
+    try:
+        settings.gemini_api_key = "AIzaFakeTestKey12345"
+        monkeypatch.setattr("app.services.ai_service.httpx.Client", FakeClient)
+        text, model_used, err = _call_gemini_detailed("Prompt teste")
+        assert err is None
+        assert model_used is not None
+        assert text == '{"verdict": "OK", "catalysts": ["A"], "risks": ["B"]}'
+    finally:
+        settings.gemini_api_key = orig_key

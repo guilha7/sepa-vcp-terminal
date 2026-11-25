@@ -7,11 +7,15 @@ import {
   ChevronUp,
   Columns2,
   ExternalLink,
+  Globe2,
   Keyboard,
+  Lock,
   Plus,
   RefreshCw,
   Settings2,
   ShieldAlert,
+  Sparkles,
+  Star,
   Trash2,
   Zap,
 } from 'lucide-react'
@@ -20,12 +24,31 @@ import { CandlestickChart } from '../components/CandlestickChart'
 import { SetupStatusBadge, StatusBadge } from '../components/StatusBadge'
 import { WarningBanner } from '../components/WarningBanner'
 
-export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
-  const [data, setData] = useState(null)
+const US_PRESETS = [
+  { id: 'sepa_leaders', label: 'Líderes Stage 2 EUA', hint: 'Top Stage 2 entre ~7.000 ações NYSE/NASDAQ' },
+  { id: 'small_mid_growth', label: 'Joias Small & Mid-Cap', hint: 'Empresas $300M–$15B em forte tendência' },
+  { id: 'volume_breakouts', label: 'Explosão de Volume Hoje', hint: 'Vol ≥ 1.5x média e alta forte (EP / Breakouts)' },
+  { id: 'near_52w_high', label: 'Top Força 1 Ano', hint: 'Maiores vencedoras anuais Stage 2' },
+]
+
+export function ScannerModule({
+  onOpenXRay,
+  onSimulateTrade,
+  onCreateAlert,
+  favorites = [],
+  onToggleFavorite,
+  isAdmin = true,
+}) {
+  const [scanMode, setScanMode] = useState('watchlist') // watchlist | us_all
+  const [usPreset, setUsPreset] = useState('sepa_leaders')
+  const [watchlistData, setWatchlistData] = useState(null)
+  const [usDiscoveryData, setUsDiscoveryData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState(null) // {pct, current, total, ticker, stage}
   const [error, setError] = useState(null)
+
+  const data = scanMode === 'us_all' ? usDiscoveryData : watchlistData
 
   // Filters & Layout
   const [assetFilter, setAssetFilter] = useState('all') // all | stock | crypto
@@ -53,7 +76,7 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
       setLoading(true)
       setError(null)
       const res = await api.getScannerResults()
-      setData(res)
+      setWatchlistData(res)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -70,7 +93,37 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
       onProgress: (p) => setScanProgress(p),
       onComplete: (res) => {
         chartCacheRef.current = {}
-        setData(res)
+        setWatchlistData(res)
+        setScanning(false)
+        setScanProgress(null)
+      },
+      onError: (err) => {
+        setError(err.message)
+        setScanning(false)
+        setScanProgress(null)
+      },
+    })
+  }
+
+  const startUsDiscoveryScan = (presetId = usPreset, forceRefresh = false) => {
+    if (sseCloseRef.current) sseCloseRef.current()
+    setUsPreset(presetId)
+    setScanMode('us_all')
+    setAssetFilter('all')
+    setScanning(true)
+    setError(null)
+    setScanProgress({
+      pct: 3,
+      current: 0,
+      total: 100,
+      ticker: 'NYSE / NASDAQ',
+      stage: 'Fase 1: A varrer ~7.000 ações dos EUA...',
+    })
+    sseCloseRef.current = api.streamUsDiscovery(presetId, 70, forceRefresh, {
+      onProgress: (p) => setScanProgress(p),
+      onComplete: (res) => {
+        chartCacheRef.current = {}
+        setUsDiscoveryData(res)
         setScanning(false)
         setScanProgress(null)
       },
@@ -116,10 +169,13 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
     loadWatchlist()
   }
 
+  const favoriteSet = useMemo(() => new Set((favorites || []).map((t) => t.toUpperCase())), [favorites])
+
   const filtered = useMemo(() => {
     const items = data?.opportunities || []
     return items.filter((item) => {
       if (assetFilter !== 'all' && item.asset_type !== assetFilter) return false
+      if (stageFilter === 'favorites' && !favoriteSet.has(item.ticker.toUpperCase())) return false
       if (stageFilter === 'stage2' && !item.trend_template?.passed) return false
       if (stageFilter === 'vcp' && !item.vcp?.detected && !item.vcp?.breakout_signal) return false
       if (stageFilter === 'breakout' && item.status !== 'BREAKOUT') return false
@@ -147,7 +203,7 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
       }
       return true
     })
-  }, [data, assetFilter, stageFilter, minScore, query])
+  }, [data, assetFilter, stageFilter, minScore, query, favoriteSet])
 
   // Ensure a valid selected ticker in split-screen mode
   useEffect(() => {
@@ -264,14 +320,81 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
             Watchlist
           </button>
           <button
-            onClick={startStreamingScan}
+            onClick={() => (scanMode === 'us_all' ? startUsDiscoveryScan(usPreset, true) : startStreamingScan())}
             disabled={scanning}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${scanning ? 'animate-spin' : ''}`} />
-            {scanning ? 'A analisar...' : 'Novo Scan Completo'}
+            {scanning ? 'A analisar...' : scanMode === 'us_all' ? 'Atualizar Descoberta EUA' : 'Novo Scan Completo'}
           </button>
         </div>
+      </div>
+
+      {/* Mode Switcher: Curated Watchlist vs ALL ~7,000 US Stocks Discovery Funnel */}
+      <div className="terminal-card p-3 space-y-2.5 border-cyan-500/20">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex rounded-xl bg-[#060a13] border border-terminal-border p-1 text-xs">
+            <button
+              onClick={() => setScanMode('watchlist')}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition ${
+                scanMode === 'watchlist'
+                  ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Watchlist Curada (Ações + Cripto)
+            </button>
+            <button
+              onClick={() => {
+                setScanMode('us_all')
+                if (!usDiscoveryData && !scanning) startUsDiscoveryScan(usPreset, false)
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition ${
+                scanMode === 'us_all'
+                  ? 'bg-gradient-to-r from-emerald-500/25 to-cyan-500/25 text-emerald-200 border border-emerald-400/50'
+                  : 'text-slate-300 hover:text-emerald-200'
+              }`}
+            >
+              <Globe2 className="w-3.5 h-3.5 text-emerald-400" />
+              Descobrir em TODOS os EUA (~7.000 ações)
+            </button>
+          </div>
+
+          {scanMode === 'us_all' && usDiscoveryData?.discovery_meta && (
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-300">
+                {usDiscoveryData.discovery_meta.total_matched_stage1} ações passaram Fase 1 nos EUA
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/35 text-cyan-200">
+                {usDiscoveryData.discovery_meta.new_outside_watchlist_count} novas fora da watchlist
+              </span>
+            </div>
+          )}
+        </div>
+
+        {scanMode === 'us_all' && (
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-terminal-border/60">
+            <span className="text-[11px] text-slate-400 inline-flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              Filtro de Mercado EUA:
+            </span>
+            {US_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => startUsDiscoveryScan(p.id, false)}
+                disabled={scanning}
+                title={p.hint}
+                className={`px-2.5 py-1 rounded-lg text-xs border transition ${
+                  usPreset === p.id
+                    ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200 font-semibold'
+                    : 'bg-[#070b14] border-terminal-border text-slate-300 hover:border-emerald-500/40'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Real-time SSE Progress Bar */}
@@ -337,6 +460,7 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
         <div className="inline-flex flex-wrap rounded-xl bg-[#060a13] border border-terminal-border p-0.5 text-xs">
           {[
             { k: 'all', l: 'Todos' },
+            { k: 'favorites', l: `★ Favoritos (${favorites.length})` },
             { k: 'stage2', l: `Stage 2 (${summary.stage2_count ?? 0})` },
             { k: 'vcp', l: `VCP (${summary.vcp_count ?? 0})` },
             { k: 'pocket', l: `Pocket Pivot (${summary.pocket_pivot_count ?? 0})` },
@@ -350,7 +474,11 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
               key={o.k}
               onClick={() => setStageFilter(o.k)}
               className={`px-2.5 py-1 rounded-lg transition ${
-                stageFilter === o.k ? 'bg-emerald-500/20 text-emerald-300 font-semibold' : 'text-slate-400 hover:text-slate-200'
+                stageFilter === o.k
+                  ? o.k === 'favorites'
+                    ? 'bg-amber-500/20 text-amber-200 font-semibold'
+                    : 'bg-emerald-500/20 text-emerald-300 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               {o.l}
@@ -386,6 +514,28 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
           </span>
         )}
       </div>
+
+      {/* Personal Favorites Quick Jump Bar (works even for tickers outside the 90-ticker Scanner!) */}
+      {favorites.length > 0 && (
+        <div className="terminal-card px-3.5 py-2.5 flex flex-wrap items-center gap-2 border-amber-500/25">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-300 shrink-0">
+            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            Os Meus Favoritos:
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {favorites.map((tk) => (
+              <button
+                key={tk}
+                onClick={() => onOpenXRay(tk)}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-200 font-mono text-[11px] font-semibold transition"
+                title={`Abrir Raio-X completo de ${tk}`}
+              >
+                {tk}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Main Content: Split-Screen (List + Instant Chart Preview) OR Full List */}
       {filtered.length === 0 ? (
@@ -430,7 +580,27 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onToggleFavorite?.(item.ticker)
+                            }}
+                            className="p-0.5 rounded hover:bg-amber-500/15 text-slate-500 hover:text-amber-300 transition"
+                            title={favoriteSet.has(item.ticker.toUpperCase()) ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
+                          >
+                            <Star
+                              className={`w-3.5 h-3.5 ${
+                                favoriteSet.has(item.ticker.toUpperCase()) ? 'fill-amber-400 text-amber-400' : ''
+                              }`}
+                            />
+                          </button>
                           <span className="font-mono font-bold text-sm text-white">{item.ticker}</span>
+                          {item.is_new_discovery && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-mono text-[9px] font-bold">
+                              NOVA EUA
+                            </span>
+                          )}
                           <SetupStatusBadge status={item.status} />
                           {rs.rs_new_high_before_price && (
                             <span className="px-1.5 py-0.5 rounded bg-blue-500/20 border border-blue-400/50 text-blue-300 font-mono text-[9px] font-bold">
@@ -501,19 +671,36 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
 
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
-                      onClick={() =>
-                        onCreateAlert?.({
-                          ticker: selectedItem.ticker,
-                          condition: 'ABOVE',
-                          target_price: selectedItem.trade_plan?.entry_pivot || selectedItem.price,
-                          notes: `Pivô VCP ${selectedItem.ticker} (Score ${selectedItem.score})`,
-                        })
-                      }
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-medium"
+                      onClick={() => onToggleFavorite?.(selectedItem.ticker)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border font-medium transition ${
+                        favoriteSet.has(selectedItem.ticker.toUpperCase())
+                          ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                          : 'bg-terminal-card border-terminal-border hover:border-amber-400/40 text-slate-300'
+                      }`}
                     >
-                      <BellPlus className="w-3.5 h-3.5" />
-                      Alerta Pivô
+                      <Star
+                        className={`w-3.5 h-3.5 ${
+                          favoriteSet.has(selectedItem.ticker.toUpperCase()) ? 'fill-amber-400 text-amber-400' : ''
+                        }`}
+                      />
+                      {favoriteSet.has(selectedItem.ticker.toUpperCase()) ? 'Favorito' : 'Favoritar'}
                     </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() =>
+                          onCreateAlert?.({
+                            ticker: selectedItem.ticker,
+                            condition: 'ABOVE',
+                            target_price: selectedItem.trade_plan?.entry_pivot || selectedItem.price,
+                            notes: `Pivô VCP ${selectedItem.ticker} (Score ${selectedItem.score})`,
+                          })
+                        }
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-medium"
+                      >
+                        <BellPlus className="w-3.5 h-3.5" />
+                        Alerta Pivô
+                      </button>
+                    )}
                     <button
                       onClick={() => onOpenXRay(selectedItem.ticker)}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg bg-terminal-card border border-terminal-border hover:border-cyan-500/50 text-slate-200 font-medium"
@@ -642,6 +829,18 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
 
                     <div>
                       <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onToggleFavorite?.(item.ticker)}
+                          className="p-0.5 rounded hover:bg-amber-500/15 text-slate-500 hover:text-amber-300 transition"
+                          title={favoriteSet.has(item.ticker.toUpperCase()) ? 'Remover dos Favoritos' : 'Adicionar aos Favoritos'}
+                        >
+                          <Star
+                            className={`w-4 h-4 ${
+                              favoriteSet.has(item.ticker.toUpperCase()) ? 'fill-amber-400 text-amber-400' : ''
+                            }`}
+                          />
+                        </button>
                         <button
                           onClick={() => onOpenXRay(item.ticker)}
                           className="font-mono font-bold text-base text-white hover:text-cyan-300 transition"
@@ -794,30 +993,39 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
               </button>
             </div>
 
-            <form onSubmit={handleAddTicker} className="p-4 border-b border-terminal-border flex flex-wrap gap-2">
-              <input
-                type="text"
-                value={newTicker}
-                onChange={(e) => setNewTicker(e.target.value)}
-                placeholder="Ex: RKLB, HIMS, SOL-USD..."
-                className="flex-1 px-3 py-1.5 text-xs font-mono bg-[#070b14] border border-terminal-border rounded-lg text-white"
-              />
-              <select
-                value={newType}
-                onChange={(e) => setNewType(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-[#070b14] border border-terminal-border rounded-lg text-slate-200"
-              >
-                <option value="stock">Ação</option>
-                <option value="crypto">Cripto</option>
-              </select>
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Adicionar
-              </button>
-            </form>
+            {isAdmin ? (
+              <form onSubmit={handleAddTicker} className="p-4 border-b border-terminal-border flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={newTicker}
+                  onChange={(e) => setNewTicker(e.target.value)}
+                  placeholder="Ex: RKLB, HIMS, SOL-USD..."
+                  className="flex-1 px-3 py-1.5 text-xs font-mono bg-[#070b14] border border-terminal-border rounded-lg text-white"
+                />
+                <select
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value)}
+                  className="px-3 py-1.5 text-xs bg-[#070b14] border border-terminal-border rounded-lg text-slate-200"
+                >
+                  <option value="stock">Ação</option>
+                  <option value="crypto">Cripto</option>
+                </select>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Adicionar
+                </button>
+              </form>
+            ) : (
+              <div className="p-3.5 border-b border-terminal-border bg-amber-500/10 text-xs text-amber-200 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-amber-300 shrink-0" />
+                <span>
+                  A Watchlist global do Scanner é gerida pelo administrador. Usa a estrela <strong>★</strong> ou as <strong>Definições → Favoritos</strong> para gerir a tua lista pessoal!
+                </span>
+              </div>
+            )}
 
             <div className="p-4 overflow-y-auto flex-1 grid grid-cols-2 sm:grid-cols-3 gap-2">
               {watchlist.map((w) => (
@@ -825,17 +1033,38 @@ export function ScannerModule({ onOpenXRay, onSimulateTrade, onCreateAlert }) {
                   key={w.ticker}
                   className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#070b14] border border-terminal-border text-xs"
                 >
-                  <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowWatchlist(false)
+                      onOpenXRay(w.ticker)
+                    }}
+                    className="text-left hover:text-cyan-300 transition"
+                  >
                     <span className="font-mono font-semibold text-slate-200">{w.ticker}</span>
                     <span className="ml-1.5 text-[10px] text-slate-500 uppercase">{w.asset_type}</span>
-                  </div>
-                  <button
-                    onClick={() => handleRemoveTicker(w.ticker)}
-                    className="text-slate-500 hover:text-rose-400 transition"
-                    title="Remover"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
+                  {isAdmin ? (
+                    <button
+                      onClick={() => handleRemoveTicker(w.ticker)}
+                      className="text-slate-500 hover:text-rose-400 transition"
+                      title="Remover"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onToggleFavorite?.(w.ticker)}
+                      className="text-slate-500 hover:text-amber-300 transition"
+                      title="Guardar nos meus Favoritos"
+                    >
+                      <Star
+                        className={`w-3.5 h-3.5 ${
+                          favoriteSet.has(w.ticker.toUpperCase()) ? 'fill-amber-400 text-amber-400' : ''
+                        }`}
+                      />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, getStoredUserName } from './services/api'
+import { loadUserPrefs, saveUserPrefs, toggleFavoriteTicker } from './services/userPrefs'
 import { Layout } from './components/Layout'
 import { LoginGate } from './components/LoginGate'
 import { WelcomeNameModal } from './components/WelcomeNameModal'
@@ -24,6 +25,38 @@ export default function App() {
 
   const [userName, setUserName] = useState(() => getStoredUserName())
   const [switchingUser, setSwitchingUser] = useState(false)
+
+  const serverDefaults = useMemo(
+    () => ({
+      capitalEur: health?.extra?.default_capital_eur ?? 100,
+      stopLossPct: health?.extra?.default_stop_loss_pct ?? 6.0,
+    }),
+    [health?.extra?.default_capital_eur, health?.extra?.default_stop_loss_pct],
+  )
+
+  const [userPrefs, setUserPrefs] = useState(() => loadUserPrefs(getStoredUserName(), { capitalEur: 100, stopLossPct: 6.0 }))
+
+  useEffect(() => {
+    setUserPrefs(loadUserPrefs(userName, serverDefaults))
+  }, [userName, serverDefaults])
+
+  const handleUpdateUserPrefs = useCallback(
+    (partial) => {
+      const updated = saveUserPrefs(userName, partial, serverDefaults)
+      setUserPrefs(updated)
+      return updated
+    },
+    [userName, serverDefaults],
+  )
+
+  const handleToggleFavorite = useCallback(
+    (ticker) => {
+      const updated = toggleFavoriteTicker(userName, ticker, serverDefaults)
+      setUserPrefs(updated)
+      return updated
+    },
+    [userName, serverDefaults],
+  )
 
   const [authChecked, setAuthChecked] = useState(false)
   const [locked, setLocked] = useState(false)
@@ -178,6 +211,9 @@ export default function App() {
             onOpenXRay={handleOpenXRay}
             onSimulateTrade={handleSimulateTrade}
             onCreateAlert={handleCreateAlert}
+            favorites={userPrefs.favorites}
+            onToggleFavorite={handleToggleFavorite}
+            isAdmin={isAdmin}
           />
         )}
         {activeTab === 'xray' && (
@@ -186,6 +222,9 @@ export default function App() {
             onChangeTicker={setSelectedTicker}
             onSimulateTrade={handleSimulateTrade}
             onCreateAlert={handleCreateAlert}
+            favorites={userPrefs.favorites}
+            onToggleFavorite={handleToggleFavorite}
+            isAdmin={isAdmin}
           />
         )}
         {activeTab === 'vision' && <ChartVisionModule onSimulateTrade={handleSimulateTrade} />}
@@ -195,12 +234,18 @@ export default function App() {
             prefillTrade={prefillTrade}
             onClearPrefill={() => setPrefillTrade(null)}
             onOpenXRay={handleOpenXRay}
-            defaultCapitalEur={health?.extra?.default_capital_eur ?? 100}
-            defaultStopLossPct={health?.extra?.default_stop_loss_pct ?? 6.0}
+            defaultCapitalEur={userPrefs.capitalEur}
+            defaultStopLossPct={userPrefs.stopLossPct}
+            defaultRiskPct={userPrefs.riskPerTradePct}
           />
         )}
         {activeTab === 'settings' && (
           <SettingsModule
+            userName={userName}
+            userPrefs={userPrefs}
+            onUpdateUserPrefs={handleUpdateUserPrefs}
+            onToggleFavorite={handleToggleFavorite}
+            onOpenXRay={handleOpenXRay}
             onSettingsSaved={fetchHealth}
             onOpenAlerts={() => setAlertsOpen(true)}
             adminRequired={adminRequired}

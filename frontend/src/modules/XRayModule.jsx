@@ -7,6 +7,7 @@ import {
   Newspaper,
   RefreshCw,
   Sparkles,
+  Star,
   XCircle,
   Zap,
 } from 'lucide-react'
@@ -15,7 +16,15 @@ import { CandlestickChart } from '../components/CandlestickChart'
 import { SentimentBadge, SetupStatusBadge, StatusBadge } from '../components/StatusBadge'
 import { WarningBanner } from '../components/WarningBanner'
 
-export function XRayModule({ ticker, onChangeTicker, onSimulateTrade, onCreateAlert }) {
+export function XRayModule({
+  ticker,
+  onChangeTicker,
+  onSimulateTrade,
+  onCreateAlert,
+  favorites = [],
+  onToggleFavorite,
+  isAdmin = true,
+}) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -140,19 +149,38 @@ export function XRayModule({ ticker, onChangeTicker, onSimulateTrade, onCreateAl
           </button>
 
           <button
-            onClick={() =>
-              onCreateAlert?.({
-                ticker: data.ticker,
-                condition: 'ABOVE',
-                target_price: plan.entry_pivot || sepa.price,
-                notes: `Alerta Pivô VCP ${data.ticker} (${formatPrice(plan.entry_pivot)})`,
-              })
-            }
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 transition"
+            onClick={() => onToggleFavorite?.(data.ticker)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition ${
+              favorites.includes((data.ticker || '').toUpperCase())
+                ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                : 'bg-terminal-card border-terminal-border hover:border-amber-400/40 text-slate-300 hover:text-amber-200'
+            }`}
+            title="Guardar ou remover dos teus Favoritos pessoais"
           >
-            <BellPlus className="w-4 h-4" />
-            Alerta Pivô
+            <Star
+              className={`w-4 h-4 ${
+                favorites.includes((data.ticker || '').toUpperCase()) ? 'fill-amber-400 text-amber-400' : ''
+              }`}
+            />
+            {favorites.includes((data.ticker || '').toUpperCase()) ? 'Favorito' : 'Guardar ★'}
           </button>
+
+          {isAdmin && (
+            <button
+              onClick={() =>
+                onCreateAlert?.({
+                  ticker: data.ticker,
+                  condition: 'ABOVE',
+                  target_price: plan.entry_pivot || sepa.price,
+                  notes: `Alerta Pivô VCP ${data.ticker} (${formatPrice(plan.entry_pivot)})`,
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 transition"
+            >
+              <BellPlus className="w-4 h-4" />
+              Alerta Pivô
+            </button>
+          )}
 
           <button
             onClick={() =>

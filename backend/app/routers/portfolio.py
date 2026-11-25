@@ -34,10 +34,15 @@ def calc_position_size(payload: PositionCalcRequest):
 @router.get("/paper/portfolio")
 def get_paper_portfolio(
     refresh: bool = Query(default=False),
+    base_capital: Optional[float] = Query(default=None, gt=0),
     x_user_name: Optional[str] = Header(default=None),
 ):
     owner = _resolve_owner(x_user_name)
-    res = paper_trading_service.get_portfolio_summary(refresh_prices=refresh, owner_name=owner)
+    res = paper_trading_service.get_portfolio_summary(
+        refresh_prices=refresh,
+        owner_name=owner,
+        base_capital_eur=base_capital,
+    )
     res["owner_name"] = owner
     return res
 
@@ -110,10 +115,17 @@ def delete_paper_position(
 
 
 @router.post("/paper/refresh")
-def refresh_paper_positions(x_user_name: Optional[str] = Header(default=None)):
+def refresh_paper_positions(
+    base_capital: Optional[float] = Query(default=None, gt=0),
+    x_user_name: Optional[str] = Header(default=None),
+):
     owner = _resolve_owner(x_user_name)
     upd = paper_trading_service.update_open_positions_with_prices(force_refresh=True)
-    summary = paper_trading_service.get_portfolio_summary(refresh_prices=False, owner_name=owner)
+    summary = paper_trading_service.get_portfolio_summary(
+        refresh_prices=False,
+        owner_name=owner,
+        base_capital_eur=base_capital,
+    )
     summary["owner_name"] = owner
     summary["triggered_stops"] = upd["triggered_stops"]
     summary["triggered_partials"] = upd["triggered_partials"]

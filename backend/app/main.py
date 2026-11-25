@@ -105,13 +105,15 @@ ADMIN_PROTECTED_EXACT = {
     ("POST", "/api/alerts/test"),
     ("POST", "/api/alerts/send-morning-briefing"),
     ("POST", "/api/alerts/export-cloud"),
+    ("POST", "/api/alerts/price"),
+    ("POST", "/api/alerts/price/check"),
     ("POST", "/api/scanner/watchlist"),
 }
 
 
 @app.middleware("http")
 async def optional_password_gate(request: Request, call_next):
-    """Enforces optional APP_ACCESS_PASSWORD and ADMIN_PASSWORD (protecting Settings & Telegram channels from friends)."""
+    """Enforces optional APP_ACCESS_PASSWORD and ADMIN_PASSWORD (protecting Settings, Price Alerts & Telegram channels from friends)."""
     path = request.url.path
     method = request.method.upper()
 
@@ -126,8 +128,10 @@ async def optional_password_gate(request: Request, call_next):
                 content={"detail": "Acesso protegido por password. Faz login para continuar."},
             )
 
-        is_admin_route = (method, path) in ADMIN_PROTECTED_EXACT or (
-            method == "DELETE" and path.startswith("/api/scanner/watchlist/")
+        is_admin_route = (
+            (method, path) in ADMIN_PROTECTED_EXACT
+            or (method == "DELETE" and path.startswith("/api/scanner/watchlist/"))
+            or (method == "DELETE" and path.startswith("/api/alerts/price/"))
         )
         if is_admin_route and not _is_admin_authorized(request):
             return JSONResponse(

@@ -538,6 +538,7 @@ class PaperTradingService:
         self,
         refresh_prices: bool = False,
         owner_name: Optional[str] = None,
+        base_capital_eur: Optional[float] = None,
     ) -> dict[str, Any]:
         warnings: list[str] = []
         triggered_stops: list[dict[str, Any]] = []
@@ -568,7 +569,7 @@ class PaperTradingService:
         gross_loss = abs(sum(float(p["pnl_eur"]) for p in losses))
         profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else (round(gross_profit, 2) if gross_profit > 0 else 0.0)
 
-        base_equity = float(settings.default_capital_eur)
+        base_equity = float(base_capital_eur) if (base_capital_eur is not None and base_capital_eur > 0) else float(settings.default_capital_eur)
         equity = base_equity
         peak = base_equity
         max_dd_pct = 0.0
