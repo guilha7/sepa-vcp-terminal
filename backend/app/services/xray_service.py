@@ -3,6 +3,11 @@ from typing import Any, Optional
 
 import pandas as pd
 
+from app.services.advanced_analytics import (
+    compute_asset_personality_backtest,
+    compute_volume_quality,
+    fetch_institutional_and_quarterly,
+)
 from app.services.ai_service import generate_trader_briefing
 from app.services.crypto_derivatives import get_crypto_derivatives_for_ticker
 from app.services.market_data import (
@@ -215,6 +220,13 @@ def get_asset_xray(ticker: str, force_refresh: bool = False) -> dict[str, Any]:
     )
 
     chart = build_chart_payload(df, bench_df if not bench_df.empty else None, sepa)
+    volume_quality = compute_volume_quality(df)
+    personality_backtest = compute_asset_personality_backtest(df)
+    institutional = fetch_institutional_and_quarterly(
+        norm,
+        quote_type=fundamentals.get("quote_type"),
+        force_refresh=force_refresh,
+    )
     derivatives = (
         get_crypto_derivatives_for_ticker(norm, price_change_24h=sepa.get("daily_change_pct"), force_refresh=force_refresh)
         if asset_type == "crypto"
@@ -228,6 +240,9 @@ def get_asset_xray(ticker: str, force_refresh: bool = False) -> dict[str, Any]:
         "updated_at": time.time(),
         "sepa": sepa,
         "fundamentals": fundamentals,
+        "volume_quality": volume_quality,
+        "personality_backtest": personality_backtest,
+        "institutional": institutional,
         "derivatives": derivatives,
         "news": news,
         "briefing": briefing,

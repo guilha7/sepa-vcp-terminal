@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import {
+  Activity,
   AlertOctagon,
+  BarChart3,
   BellPlus,
   CheckCircle2,
   ExternalLink,
@@ -8,6 +10,8 @@ import {
   RefreshCw,
   Sparkles,
   Star,
+  TrendingUp,
+  Users,
   XCircle,
   Zap,
 } from 'lucide-react'
@@ -187,6 +191,7 @@ export function XRayModule({
               onSimulateTrade({
                 ticker: data.ticker,
                 asset_type: data.asset_type,
+                asset_currency: /\.(LS|DE|PA|AS|MC|MI)$/i.test(data.ticker || '') ? 'EUR' : 'USD',
                 entry_price: sepa.price,
                 stop_loss_pct: Math.min(plan.stop_loss_pct || 6.0, 6.0),
                 setup_tag: sepa.status === 'BREAKOUT' ? 'BREAKOUT' : 'VCP',
@@ -314,6 +319,243 @@ export function XRayModule({
                   {data.derivatives.top_traders_ls_ratio} ({data.derivatives.top_long_pct}% Long)
                 </strong>
               </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Institutional Footprint, Asset Personality Backtest (2Y) & Code 33 Quarterly Acceleration */}
+      {(data.volume_quality?.available || data.personality_backtest?.available || data.institutional?.available) && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+          {/* Left: Volume Quality (O'Neil A-E) + Insiders/Short + 2Y Asset Personality Backtest */}
+          <div className={`${data.institutional?.available ? 'xl:col-span-7' : 'xl:col-span-12'} terminal-card p-5 space-y-4`}>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-terminal-border pb-3">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-sm font-bold text-white">Pegada Institucional &amp; Personalidade (Backtest 2 Anos)</h3>
+              </div>
+              {data.volume_quality?.available && (
+                <StatusBadge
+                  variant={
+                    ['A', 'B'].includes(data.volume_quality.acc_dist_grade)
+                      ? 'green'
+                      : ['D', 'E'].includes(data.volume_quality.acc_dist_grade)
+                        ? 'red'
+                        : 'yellow'
+                  }
+                >
+                  Volume O&apos;Neil: Grau {data.volume_quality.acc_dist_grade} ({data.volume_quality.up_down_volume_ratio_50d}x)
+                </StatusBadge>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              {/* Volume O'Neil */}
+              {data.volume_quality?.available && (
+                <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+                    <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                    Volume Up/Down (50d)
+                  </div>
+                  <div className="font-mono text-xl font-bold text-white">
+                    {data.volume_quality.up_down_volume_ratio_50d}x
+                    <span className="ml-2 text-xs text-cyan-300">({data.volume_quality.acc_dist_grade})</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400">{data.volume_quality.acc_dist_label}</div>
+                  <div className="text-[10px] font-mono text-slate-400 pt-1">
+                    20d Vol Forte:{' '}
+                    <span className="text-emerald-400 font-bold">↑{data.volume_quality.high_vol_up_20d}</span> /{' '}
+                    <span className="text-rose-400 font-bold">↓{data.volume_quality.high_vol_down_20d}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Insiders & Short Squeeze */}
+              {data.institutional?.available && (
+                <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+                    <Users className="w-3.5 h-3.5 text-purple-400" />
+                    Insiders (6M) &amp; Short
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <StatusBadge
+                      variant={
+                        data.institutional.insiders?.signal === 'COMPRA_INSIDERS'
+                          ? 'green'
+                          : data.institutional.insiders?.signal === 'VENDA_INSIDERS'
+                            ? 'red'
+                            : 'slate'
+                      }
+                    >
+                      {data.institutional.insiders?.signal === 'COMPRA_INSIDERS'
+                        ? 'COMPRA INSIDERS'
+                        : data.institutional.insiders?.signal === 'VENDA_INSIDERS'
+                          ? 'VENDA INSIDERS'
+                          : 'INSIDERS NEUTRO'}
+                    </StatusBadge>
+                    {data.institutional.short_interest?.squeeze_risk &&
+                      data.institutional.short_interest.squeeze_risk !== 'N/D' && (
+                        <StatusBadge
+                          variant={
+                            data.institutional.short_interest.squeeze_risk === 'ALTO'
+                              ? 'purple'
+                              : data.institutional.short_interest.squeeze_risk === 'MODERADO'
+                                ? 'yellow'
+                                : 'slate'
+                          }
+                        >
+                          Squeeze: {data.institutional.short_interest.squeeze_risk}
+                        </StatusBadge>
+                      )}
+                  </div>
+                  <div className="text-[11px] text-slate-400 leading-snug">
+                    {data.institutional.insiders?.signal_label || 'Sem atividade SEC recente'}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 pt-0.5 space-y-0.5">
+                    <div>
+                      Short Float:{' '}
+                      <strong className="text-slate-200">
+                        {data.institutional.short_interest?.short_float_pct !== null &&
+                        data.institutional.short_interest?.short_float_pct !== undefined
+                          ? `${data.institutional.short_interest.short_float_pct}%`
+                          : '—'}
+                      </strong>{' '}
+                      • DTC:{' '}
+                      <strong className="text-slate-200">
+                        {data.institutional.short_interest?.days_to_cover ?? '—'}d
+                      </strong>
+                    </div>
+                    <div>
+                      Instituições:{' '}
+                      <strong className="text-cyan-300">
+                        {data.institutional.short_interest?.institutional_held_pct !== null &&
+                        data.institutional.short_interest?.institutional_held_pct !== undefined
+                          ? `${data.institutional.short_interest.institutional_held_pct}%`
+                          : '—'}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2-Year Breakout Personality Backtest */}
+              {data.personality_backtest?.available && (
+                <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3.5 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                    Backtest Breakouts (2 Anos)
+                  </div>
+                  <div className="font-mono text-lg font-bold text-white">
+                    {data.personality_backtest.win_rate_pct !== null && data.personality_backtest.win_rate_pct !== undefined
+                      ? `${data.personality_backtest.win_rate_pct}% Acerto 2R`
+                      : `${data.personality_backtest.breakout_signals} sinais`}
+                  </div>
+                  <div className="text-[11px] text-emerald-300/90 leading-snug">
+                    {data.personality_backtest.personality_label}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 pt-0.5 space-y-0.5">
+                    <div>
+                      +12% vs -6%: <strong className="text-emerald-400">{data.personality_backtest.wins_2r}W</strong> /{' '}
+                      <strong className="text-rose-400">{data.personality_backtest.losses_stop}L</strong> • Fakeout:{' '}
+                      {data.personality_backtest.fakeout_rate_pct ?? '—'}%
+                    </div>
+                    <div>
+                      Trailing Ideal: <strong className="text-cyan-300">{data.personality_backtest.best_trailing_ma}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {data.personality_backtest?.available && (
+              <p className="text-[11px] text-slate-400 bg-[#070b14] border border-terminal-border rounded-lg px-3 py-2">
+                <strong className="text-cyan-300">Trailing Stop sugerido ({data.personality_backtest.best_trailing_ma}):</strong>{' '}
+                {data.personality_backtest.best_trailing_reason}
+              </p>
+            )}
+          </div>
+
+          {/* Right: Minervini Code 33 Quarterly Acceleration & Earnings Surprises */}
+          {data.institutional?.available && (
+            <div className="xl:col-span-5 terminal-card p-5 space-y-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-terminal-border pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white">Aceleração Trimestral (Code 33) &amp; Earnings</h3>
+                  <p className="text-[11px] text-slate-400">Últimos 4 trimestres — receitas, lucros e surpresas EPS</p>
+                </div>
+                <StatusBadge variant={data.institutional.code_33_acceleration ? 'green' : 'slate'}>
+                  {data.institutional.code_33_acceleration ? 'CODE 33 ATIVO' : 'SEM CODE 33'}
+                </StatusBadge>
+              </div>
+
+              <p className="text-xs text-slate-300 bg-[#080e1c] border border-terminal-border rounded-lg px-3 py-2">
+                {data.institutional.code_33_summary}
+              </p>
+
+              {/* Earnings Surprises Pills */}
+              {(data.institutional.earnings_surprises || []).length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">
+                    Surpresas de Earnings ({data.institutional.beats_last_4}/{data.institutional.earnings_surprises.length} superados)
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+                    {data.institutional.earnings_surprises.map((s) => (
+                      <div
+                        key={s.quarter}
+                        className={`rounded-lg p-2 border ${
+                          s.beat
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                            : 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                        }`}
+                      >
+                        <div className="text-[9px] text-slate-400">{s.quarter}</div>
+                        <div className="font-bold">
+                          {s.surprise_pct !== null && s.surprise_pct !== undefined
+                            ? `${s.surprise_pct >= 0 ? '+' : ''}${s.surprise_pct}%`
+                            : s.beat
+                              ? 'Bateu'
+                              : 'Falhou'}
+                        </div>
+                        <div className="text-[9px] text-slate-400">
+                          EPS {s.eps_actual ?? '—'} vs {s.eps_estimate ?? '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Quarterly Revenue / Net Income Table */}
+              {(data.institutional.quarterly_financials || []).length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px] font-mono">
+                    <thead>
+                      <tr className="text-slate-500 border-b border-terminal-border text-left">
+                        <th className="py-1.5 font-sans">Trimestre</th>
+                        <th className="py-1.5 text-right font-sans">Receita</th>
+                        <th className="py-1.5 text-right font-sans">QoQ</th>
+                        <th className="py-1.5 text-right font-sans">Lucro Líq.</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-terminal-border/50">
+                      {data.institutional.quarterly_financials.map((q) => (
+                        <tr key={q.quarter}>
+                          <td className="py-1.5 text-slate-300">{q.quarter}</td>
+                          <td className="py-1.5 text-right text-white font-semibold">{formatCompactNumber(q.revenue)}</td>
+                          <td
+                            className={`py-1.5 text-right ${
+                              (q.rev_qoq_pct || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                            }`}
+                          >
+                            {q.rev_qoq_pct !== null && q.rev_qoq_pct !== undefined ? formatPct(q.rev_qoq_pct) : '—'}
+                          </td>
+                          <td className="py-1.5 text-right text-slate-200">{formatCompactNumber(q.net_income)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -589,8 +589,11 @@ def compute_trade_plan(
     }
 
 
-def check_liquidity(df: pd.DataFrame, asset_type: str = "stock") -> dict[str, Any]:
-    """Anti-error filter: ignores illiquid assets or penny stocks."""
+EU_SUFFIXES = (".DE", ".PA", ".AS", ".MC", ".MI", ".L", ".SW", ".ST")
+
+
+def check_liquidity(df: pd.DataFrame, asset_type: str = "stock", ticker: str = "") -> dict[str, Any]:
+    """Anti-error filter: ignores illiquid assets or penny stocks (calibrated for US, Europe & Portugal PSI)."""
     if df.empty:
         return {"passed": False, "avg_dollar_volume_50d": 0.0, "avg_volume_50d": 0.0, "reason": "Sem dados de volume"}
 
@@ -598,22 +601,55 @@ def check_liquidity(df: pd.DataFrame, asset_type: str = "stock") -> dict[str, An
     avg_vol = float(tail["volume"].mean())
     avg_dollar_vol = float((tail["close"] * tail["volume"]).mean())
     price = float(df["close"].iloc[-1])
+    tk = (ticker or "").upper()
 
     if asset_type == "stock":
-        if price < 5.0:
-            return {
-                "passed": False,
-                "avg_dollar_volume_50d": round(avg_dollar_vol, 2),
-                "avg_volume_50d": round(avg_vol, 2),
-                "reason": "Preço inferior a $5 (penny stock evitada no SEPA).",
-            }
-        if avg_dollar_vol < 5_000_000 or avg_vol < 150_000:
-            return {
-                "passed": False,
-                "avg_dollar_volume_50d": round(avg_dollar_vol, 2),
-                "avg_volume_50d": round(avg_vol, 2),
-                "reason": "Liquidez média diária insuficiente (< $5M/dia).",
-            }
+        if tk.endswith(".LS"):
+            # Euronext Lisbon (PSI): major blue-chips like BCP/SON/EDP trade below 5€
+            if price < 0.20:
+                return {
+                    "passed": False,
+                    "avg_dollar_volume_50d": round(avg_dollar_vol, 2),
+                    "avg_volume_50d": round(avg_vol, 2),
+                    "reason": "Preço inferior a 0.20€ (micro-cap evitada).",
+                }
+            if avg_dollar_vol < 100_000:
+                return {
+                    "passed": False,
+                    "avg_dollar_volume_50d": round(avg_dollar_vol, 2),
+                    "avg_volume_50d": round(avg_vol, 2),
+                    "reason": "Liquidez média diária insuficiente em Lisboa (< 100k€/dia).",
+                }
+        elif tk.endswith(EU_SUFFIXES):
+            if price < 1.50:
+                return {
+                    "passed": False,
+                    "avg_dollar_volume_50d": round(avg_dollar_vol, 2),
+                    "avg_volume_50d": round(avg_vol, 2),
+                    "reason": "Preço inferior a 1.50€ (penny stock evitada).",
+                }
+            if avg_dollar_vol < 1_000_000:
+                return {
+                    "passed": False,
+                    "avg_dollar_volume_50d": round(avg_dollar_vol, 2),
+                    "avg_volume_50d": round(avg_vol, 2),
+                    "reason": "Liquidez média diária insuficiente na Europa (< 1M€/dia).",
+                }
+        else:
+            if price < 5.0:
+                return {
+                    "passed": False,
+                    "avg_dollar_volume_50d": round(avg_dollar_vol, 2),
+                    "avg_volume_50d": round(avg_vol, 2),
+                    "reason": "Preço inferior a $5 (penny stock evitada no SEPA).",
+                }
+            if avg_dollar_vol < 5_000_000 or avg_vol < 150_000:
+                return {
+                    "passed": False,
+                    "avg_dollar_volume_50d": round(avg_dollar_vol, 2),
+                    "avg_volume_50d": round(avg_vol, 2),
+                    "reason": "Liquidez média diária insuficiente (< $5M/dia).",
+                }
     else:
         if avg_dollar_vol < 1_000_000:
             return {
@@ -641,7 +677,7 @@ def analyze_sepa_vcp(
     data_source: str = "yfinance",
 ) -> dict[str, Any]:
     """Full Minervini SEPA + VCP evaluation returning score (0-100), RS New High signal, trade plan & explanations."""
-    liquidity = check_liquidity(df, asset_type=asset_type)
+    liquidity = check_liquidity(df, asset_type=asset_type, ticker=ticker)
     tt = evaluate_trend_template(
         df=df,
         benchmark_df=benchmark_df,

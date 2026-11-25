@@ -654,6 +654,78 @@ class PaperTradingService:
             else:
                 sqn_grade = "Fraco (< 1.6 — Rever Regras)"
 
+        # Portfolio Heat & Sector Concentration (Minervini / Van Tharp open risk monitor)
+        open_risk_eur = 0.0
+        be_protected_count = 0
+        sector_buckets: dict[str, dict[str, Any]] = {}
+        for p in open_pos:
+            entry_p = float(p["entry_price"])
+            stop_p = float(p["stop_loss_price"])
+            qty_p = float(p["quantity"])
+            fx_p = max(float(p.get("fx_rate_eurusd") or 1.0), 0.1)
+            cap_p = float(p["capital_allocated"])
+
+            # Risk to initial capital = 0€ once stop is moved to Breakeven or above entry!
+            pos_risk = max(0.0, ((entry_p - stop_p) * qty_p) / fx_p)
+            if pos_risk <= 0.01 or int(p.get("breakeven_moved") or 0) == 1 and stop_p >= entry_p * 0.999:
+                pos_risk = 0.0
+                be_protected_count += 1
+            open_risk_eur += pos_risk
+
+            if p.get("asset_type") == "crypto":
+                sec_name = "Criptomoedas"
+            else:
+                cached_f = self.db.cache_get(f"fund:{p['ticker']}") or {}
+                sec_name = (cached_f.get("sector") if isinstance(cached_f, dict) else None) or "Ações (Geral)"
+            if sec_name not in sector_buckets:
+                sector_buckets[sec_name] = {"sector": sec_name, "count": 0, "capital_eur": 0.0, "risk_eur": 0.0}
+            sector_buckets[sec_name]["count"] += 1
+            sector_buckets[sec_name]["capital_eur"] = round(sector_buckets[sec_name]["capital_eur"] + cap_p, 2)
+            sector_buckets[sec_name]["risk_eur"] = round(sector_buckets[sec_name]["risk_eur"] + pos_risk, 2)
+
+        open_risk_eur = round(open_risk_eur, 2)
+        open_risk_pct = round((open_risk_eur / base_equity) * 100.0, 2) if base_equity > 0 else 0.0
+        if open_risk_pct > 6.0:
+            heat_level = "ALTO"
+            heat_msg = f"Calor elevado ({open_risk_pct:.1f}% em risco aberto): evita abrir novas posições até protegeres stops em Breakeven."
+        elif open_risk_pct > 4.0:
+            heat_level = "MODERADO"
+            heat_msg = f"Risco aberto moderado ({open_risk_pct:.1f}%): escolhe apenas setups A+."
+        else:
+            heat_level = "SEGURO"
+            heat_msg = (
+                "Risco aberto controlado (≤ 4% do capital base)."
+                if open_pos
+                else "Sem risco aberto (100% em liquidez)."
+            )
+
+        sector_exposure = []
+        for b in sorted(sector_buckets.values(), key=lambda x: x["capital_eur"], reverse=True):
+            pct_dep = round((b["capital_eur"] / capital_deployed) * 100.0, 1) if capital_deployed > 0 else 0.0
+            sector_exposure.append({**b, "capital_pct": pct_dep})
+
+        concentration_warning = None
+        if len(open_pos) >= 2 and sector_exposure:
+            top_sec = sector_exposure[0]
+            if (len(open_pos) >= 3 and top_sec["capital_pct"] >= 45.0) or (
+                len(open_pos) == 2 and top_sec["count"] >= 2 and top_sec["capital_pct"] >= 60.0
+            ):
+                concentration_warning = (
+                    f"Concentração elevada: {top_sec['capital_pct']:.0f}% do capital aberto está em "
+                    f"'{top_sec['sector']}' ({top_sec['count']} posições) — risco correlacionado num dia de queda."
+                )
+
+        portfolio_heat = {
+            "open_risk_eur": open_risk_eur,
+            "open_risk_pct": open_risk_pct,
+            "breakeven_protected_count": be_protected_count,
+            "open_positions_count": len(open_pos),
+            "heat_level": heat_level,
+            "heat_message": heat_msg,
+            "sector_exposure": sector_exposure,
+            "concentration_warning": concentration_warning,
+        }
+
         return {
             "fx_rate_eurusd": fx_rate,
             "metrics": {
@@ -681,6 +753,7 @@ class PaperTradingService:
                 "auto_stops_count": sum(1 for p in closed_pos if p["status"] == "CLOSED_STOP"),
                 "partial_2r_count": sum(1 for p in positions if int(p.get("partial_2r_taken") or 0) == 1),
             },
+            "portfolio_heat": portfolio_heat,
             "journal_stats": self._compute_journal_stats(closed_pos),
             "positions": positions,
             "equity_curve": equity_curve,

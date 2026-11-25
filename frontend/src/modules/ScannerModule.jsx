@@ -25,10 +25,12 @@ import { SetupStatusBadge, StatusBadge } from '../components/StatusBadge'
 import { WarningBanner } from '../components/WarningBanner'
 
 const US_PRESETS = [
-  { id: 'sepa_leaders', label: 'Líderes Stage 2 EUA', hint: 'Top Stage 2 entre ~7.000 ações NYSE/NASDAQ' },
-  { id: 'small_mid_growth', label: 'Joias Small & Mid-Cap', hint: 'Empresas $300M–$15B em forte tendência' },
-  { id: 'volume_breakouts', label: 'Explosão de Volume Hoje', hint: 'Vol ≥ 1.5x média e alta forte (EP / Breakouts)' },
-  { id: 'near_52w_high', label: 'Top Força 1 Ano', hint: 'Maiores vencedoras anuais Stage 2' },
+  { id: 'sepa_leaders', label: 'EUA: Líderes Stage 2', hint: 'Top Stage 2 entre ~7.000 ações NYSE/NASDAQ' },
+  { id: 'small_mid_growth', label: 'EUA: Joias Small & Mid-Cap', hint: 'Empresas $300M–$15B em forte tendência' },
+  { id: 'volume_breakouts', label: 'EUA: Explosão Volume Hoje', hint: 'Vol ≥ 1.5x média e alta forte (EP / Breakouts)' },
+  { id: 'near_52w_high', label: 'EUA: Top Força 1 Ano', hint: 'Maiores vencedoras anuais Stage 2' },
+  { id: 'eu_leaders', label: 'Europa: Líderes Stage 2 (EUR)', hint: 'DAX, CAC, AEX, IBEX, Itália e Lisboa em Euros' },
+  { id: 'portugal_psi', label: 'Portugal: Euronext Lisboa (PSI)', hint: 'EDP, Galp, Jerónimo Martins, Sonae, NOS, BCP, Navigator...' },
 ]
 
 export function ScannerModule({
@@ -356,14 +358,14 @@ export function ScannerModule({
               }`}
             >
               <Globe2 className="w-3.5 h-3.5 text-emerald-400" />
-              Descobrir em TODOS os EUA (~7.000 ações)
+              Descobrir EUA (~7.000) &amp; Europa / PT
             </button>
           </div>
 
           {scanMode === 'us_all' && usDiscoveryData?.discovery_meta && (
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
               <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-300">
-                {usDiscoveryData.discovery_meta.total_matched_stage1} ações passaram Fase 1 nos EUA
+                {usDiscoveryData.discovery_meta.total_matched_stage1} ações na Fase 1 ({usDiscoveryData.discovery_meta.us_universe_scanned})
               </span>
               <span className="px-2 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/35 text-cyan-200">
                 {usDiscoveryData.discovery_meta.new_outside_watchlist_count} novas fora da watchlist
@@ -376,7 +378,7 @@ export function ScannerModule({
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-terminal-border/60">
             <span className="text-[11px] text-slate-400 inline-flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              Filtro de Mercado EUA:
+              Mercado &amp; Filtro:
             </span>
             {US_PRESETS.map((p) => (
               <button
@@ -713,6 +715,7 @@ export function ScannerModule({
                         onSimulateTrade({
                           ticker: selectedItem.ticker,
                           asset_type: selectedItem.asset_type,
+                          asset_currency: /\.(LS|DE|PA|AS|MC|MI)$/i.test(selectedItem.ticker || '') ? 'EUR' : 'USD',
                           entry_price: selectedItem.price,
                           stop_loss_pct: Math.min(selectedItem.trade_plan?.stop_loss_pct || 6.0, 6.0),
                           setup_tag: selectedItem.status === 'BREAKOUT' ? 'BREAKOUT' : 'VCP',
@@ -922,6 +925,7 @@ export function ScannerModule({
                         onSimulateTrade({
                           ticker: item.ticker,
                           asset_type: item.asset_type,
+                          asset_currency: /\.(LS|DE|PA|AS|MC|MI)$/i.test(item.ticker || '') ? 'EUR' : 'USD',
                           entry_price: item.price,
                           stop_loss_pct: Math.min(plan.stop_loss_pct || 6.0, 6.0),
                           setup_tag: item.status === 'BREAKOUT' ? 'BREAKOUT' : 'VCP',

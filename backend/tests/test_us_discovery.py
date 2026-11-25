@@ -71,4 +71,5 @@ def test_us_discovery_presets_endpoint():
     client = TestClient(app)
     r = client.get("/api/scanner/us-discovery/presets")
     assert r.status_code == 200
-    assert len(r.json()["presets"]) == 4
+    ids = {p["id"] for p in r.json()["presets"]}
+    assert {"sepa_leaders", "small_mid_growth", "volume_breakouts", "near_52w_high", "eu_leaders", "portugal_psi"} <= ids

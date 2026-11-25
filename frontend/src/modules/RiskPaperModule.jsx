@@ -223,6 +223,7 @@ export function RiskPaperModule({
   }
 
   const m = portfolio?.metrics || {}
+  const heat = portfolio?.portfolio_heat || null
   const positions = portfolio?.positions || []
   const jStats = portfolio?.journal_stats || { by_setup: [], by_emotion: [] }
 
@@ -552,6 +553,74 @@ export function RiskPaperModule({
               </div>
             </div>
           </div>
+
+          {/* Portfolio Heat & Sector Concentration Monitor */}
+          {heat && (
+            <div
+              className={`terminal-card p-4 space-y-3 border ${
+                heat.heat_level === 'ALTO'
+                  ? 'border-rose-500/45 bg-rose-500/5'
+                  : heat.heat_level === 'MODERADO'
+                    ? 'border-amber-500/35'
+                    : 'border-emerald-500/25'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold text-white">Calor da Carteira (Portfolio Heat &amp; Concentração)</div>
+                  <p className="text-[11px] text-slate-400">{heat.heat_message}</p>
+                </div>
+                <div className="flex items-center gap-2 font-mono text-xs">
+                  <StatusBadge
+                    variant={
+                      heat.heat_level === 'ALTO' ? 'red' : heat.heat_level === 'MODERADO' ? 'yellow' : 'green'
+                    }
+                  >
+                    Risco Aberto: -{heat.open_risk_eur.toFixed(2)}€ ({heat.open_risk_pct.toFixed(1)}%)
+                  </StatusBadge>
+                  {heat.breakeven_protected_count > 0 && (
+                    <StatusBadge variant="cyan">
+                      {heat.breakeven_protected_count} em Breakeven (0€ risco)
+                    </StatusBadge>
+                  )}
+                </div>
+              </div>
+
+              <div className="w-full h-2 rounded-full bg-[#070b14] overflow-hidden border border-terminal-border">
+                <div
+                  className={`h-full transition-all ${
+                    heat.heat_level === 'ALTO'
+                      ? 'bg-rose-500'
+                      : heat.heat_level === 'MODERADO'
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(Math.max((heat.open_risk_pct / 8.0) * 100, heat.open_risk_pct > 0 ? 6 : 0), 100)}%` }}
+                />
+              </div>
+
+              {(heat.sector_exposure || []).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className="text-slate-400 mr-1">Exposição aberta:</span>
+                  {heat.sector_exposure.map((sec) => (
+                    <span
+                      key={sec.sector}
+                      className="px-2 py-0.5 rounded-md bg-[#080e1c] border border-terminal-border font-mono text-slate-200"
+                    >
+                      {sec.sector}: <strong className="text-cyan-300">{sec.capital_pct}%</strong> ({sec.count})
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {heat.concentration_warning && (
+                <div className="rounded-lg bg-amber-500/15 border border-amber-500/40 px-3 py-2 text-xs text-amber-200 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>{heat.concentration_warning}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Equity Curve */}
           <div className="terminal-card p-4 space-y-2">
