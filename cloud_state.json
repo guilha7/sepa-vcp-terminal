@@ -1,6 +1,11 @@
 {
   "last_macro_regime": "RISK_OFF",
   "triggered_price_alerts": {},
-  "notified_breakouts": {},
-  "last_run_utc": "2026-11-24T23:12:46.251627+00:00"
+  "notified_breakouts": {
+    "NVDA": "2026-11-25"
+  },
+  "last_run_utc": "2026-11-25T07:15:19.365811+00:00",
+  "notified_events": {
+    "IBD_DIST": "2026-11-25"
+  }
 }
