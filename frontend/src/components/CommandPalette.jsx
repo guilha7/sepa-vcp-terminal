@@ -9,6 +9,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Star,
 } from 'lucide-react'
 import { api } from '../services/api'
 
@@ -22,7 +23,7 @@ const MODULE_COMMANDS = [
   { id: 'act-alerts', label: 'Abrir Central de Alertas (Telegram / Discord / Preço)', group: 'Ações', action: 'alerts', icon: Bell },
 ]
 
-export function CommandPalette({ open, onClose, onSelectTab, onOpenXRay, onOpenAlerts }) {
+export function CommandPalette({ open, onClose, onSelectTab, onOpenXRay, onOpenAlerts, favorites = [] }) {
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [tickers, setTickers] = useState([])
@@ -45,8 +46,21 @@ export function CommandPalette({ open, onClose, onSelectTab, onOpenXRay, onOpenA
       (c) => !q || c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q),
     )
 
+    const favSet = new Set((favorites || []).map((t) => t.toUpperCase()))
+    const favHits = (favorites || [])
+      .filter((t) => !q || t.toLowerCase().includes(q))
+      .slice(0, 6)
+      .map((t) => ({
+        id: `fav-${t}`,
+        label: `★ ${t}`,
+        sub: 'Favorito Pessoal • Abrir Raio-X',
+        group: 'Favoritos',
+        ticker: t,
+        icon: Star,
+      }))
+
     const tickerHits = tickers
-      .filter((t) => !q || t.ticker.toLowerCase().includes(q))
+      .filter((t) => !favSet.has(t.ticker.toUpperCase()) && (!q || t.ticker.toLowerCase().includes(q)))
       .slice(0, q ? 10 : 6)
       .map((t) => ({
         id: `tk-${t.ticker}`,
@@ -57,8 +71,8 @@ export function CommandPalette({ open, onClose, onSelectTab, onOpenXRay, onOpenA
         icon: BarChart3,
       }))
 
-    const list = [...modHits, ...tickerHits]
-    if (q && !tickerHits.some((x) => x.ticker.toLowerCase() === q)) {
+    const list = [...favHits, ...modHits, ...tickerHits]
+    if (q && !tickerHits.some((x) => x.ticker.toLowerCase() === q) && !favHits.some((x) => x.ticker.toLowerCase() === q)) {
       list.unshift({
         id: `custom-${q}`,
         label: `Abrir Raio-X de "${query.trim().toUpperCase()}"`,
@@ -69,7 +83,7 @@ export function CommandPalette({ open, onClose, onSelectTab, onOpenXRay, onOpenA
       })
     }
     return list
-  }, [query, tickers])
+  }, [query, tickers, favorites])
 
   useEffect(() => {
     setSelectedIdx(0)

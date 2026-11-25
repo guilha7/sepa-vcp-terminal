@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { ArrowRight, TrendingUp, User } from 'lucide-react'
 import { setStoredUserName } from '../services/api'
 
-export function WelcomeNameModal({ initialName = '', onConfirm }) {
+export function WelcomeNameModal({ initialName = '', onConfirm, onCancel }) {
   const [name, setName] = useState(initialName)
 
   const handleSubmit = (e) => {
@@ -51,14 +51,25 @@ export function WelcomeNameModal({ initialName = '', onConfirm }) {
           </p>
         </div>
 
-        <button
-          type="submit"
-          disabled={!name.trim()}
-          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/30 to-emerald-500/30 hover:from-cyan-500/40 hover:to-emerald-500/40 border border-cyan-400/50 text-sm font-semibold text-white inline-flex items-center justify-center gap-2 transition disabled:opacity-45"
-        >
-          Entrar no Terminal
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        <div className="flex gap-2">
+          {initialName && onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2.5 rounded-xl bg-terminal-card border border-terminal-border hover:border-slate-500 text-xs font-semibold text-slate-300 transition"
+            >
+              Voltar
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={!name.trim()}
+            className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/30 to-emerald-500/30 hover:from-cyan-500/40 hover:to-emerald-500/40 border border-cyan-400/50 text-sm font-semibold text-white inline-flex items-center justify-center gap-2 transition disabled:opacity-45"
+          >
+            Entrar no Terminal
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
       </form>
     </div>
   )

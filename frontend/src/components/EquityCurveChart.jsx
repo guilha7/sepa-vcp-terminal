@@ -53,7 +53,7 @@ export function EquityCurveChart({ points = [] }) {
         <text x="18" y={H - 4} fill="#94a3b8" fontSize="10" fontFamily="JetBrains Mono">
           Mín: {minVal.toFixed(2)}€
         </text>
-        <text x={W - 120} y="14" fill={strokeColor} fontSize="11" fontWeight="600" fontFamily="JetBrains Mono">
+        <text x={W - 18} y="14" textAnchor="end" fill={strokeColor} fontSize="11" fontWeight="600" fontFamily="JetBrains Mono">
           Atual: {values[values.length - 1].toFixed(2)}€
         </text>
       </svg>

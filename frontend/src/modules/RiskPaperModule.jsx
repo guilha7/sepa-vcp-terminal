@@ -202,6 +202,7 @@ export function RiskPaperModule({
   }
 
   const handleDeletePosition = async (posId) => {
+    if (!window.confirm('Eliminar permanentemente este registo do teu Diário de Paper Trading?')) return
     await api.deletePaperPosition(posId)
     loadPortfolio(false)
   }
@@ -319,7 +320,9 @@ export function RiskPaperModule({
 
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <label className="block text-[11px] text-slate-400 mb-1">Capital (€) — Padrão 100€</label>
+              <label className="block text-[11px] text-slate-400 mb-1">
+                Capital (€) — Teu padrão: {Number(defaultCapitalEur).toFixed(0)}€
+              </label>
               <input
                 type="number"
                 min="1"
@@ -398,6 +401,7 @@ export function RiskPaperModule({
                   <option value="NONE">Fixo / BE</option>
                   <option value="SMA10">SMA 10</option>
                   <option value="SMA21">SMA 21</option>
+                  <option value="SMA50">SMA 50</option>
                 </select>
               </div>
               <div>
@@ -465,7 +469,7 @@ export function RiskPaperModule({
                 onChange={(e) => setAllowFractional(e.target.checked)}
                 className="accent-cyan-500"
               />
-              Permitir unidades fracionadas (ideal para conta 100€)
+              Permitir unidades fracionadas (ideal para contas pequenas)
             </label>
           </div>
 
@@ -524,8 +528,12 @@ export function RiskPaperModule({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono tabular-nums">
             <div className="terminal-card p-3.5">
               <div className="text-[11px] font-sans text-slate-400">Equity Simulada</div>
-              <div className="text-xl font-bold text-white mt-1">{(m.current_equity_eur ?? 100).toFixed(2)}€</div>
-              <div className="text-[10px] text-slate-500">Base: {(m.base_capital_eur ?? 100).toFixed(0)}€</div>
+              <div className="text-xl font-bold text-white mt-1">
+                {(m.current_equity_eur ?? Number(defaultCapitalEur)).toFixed(2)}€
+              </div>
+              <div className="text-[10px] text-slate-500">
+                Base: {(m.base_capital_eur ?? Number(defaultCapitalEur)).toFixed(0)}€
+              </div>
             </div>
 
             <div className="terminal-card p-3.5">
@@ -800,7 +808,9 @@ export function RiskPaperModule({
                         <div className="text-cyan-400">{formatPrice(p.target_3r)}</div>
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <div className="text-slate-200">{Number(p.quantity).toFixed(4)}</div>
+                        <div className="text-slate-200">
+                          {Number(p.quantity) >= 100 ? Number(p.quantity).toFixed(2) : Number(p.quantity).toFixed(4)}
+                        </div>
                         <div className="text-[10px] text-slate-500">{Number(p.capital_allocated).toFixed(2)}€</div>
                       </td>
                       <td className={`px-3 py-3 text-right font-bold ${pnlPos ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -937,6 +947,7 @@ export function RiskPaperModule({
                   <option value="NONE">Trailing: Nenhum</option>
                   <option value="SMA10">Trailing: SMA 10</option>
                   <option value="SMA21">Trailing: SMA 21</option>
+                  <option value="SMA50">Trailing: SMA 50</option>
                 </select>
               </div>
             )}

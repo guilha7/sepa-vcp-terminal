@@ -183,17 +183,19 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
 
       // Pocket Pivot markers (Gil Morales & Chris Kacher)
       const ppDates = chartData?.pocket_pivot_dates || []
-      ppDates.forEach((dt) => {
-        if (validDates.has(dt)) {
-          markers.push({
-            time: dt,
-            position: 'aboveBar',
-            color: '#38bdf8',
-            shape: 'circle',
-            text: 'PP',
-          })
-        }
-      })
+      if (showVcpSwings && ppDates.length > 0) {
+        ppDates.forEach((dt) => {
+          if (validDates.has(dt)) {
+            markers.push({
+              time: dt,
+              position: 'aboveBar',
+              color: '#38bdf8',
+              shape: 'circle',
+              text: 'PP',
+            })
+          }
+        })
+      }
 
       if (markers.length > 0) {
         markers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0))
@@ -202,14 +204,15 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
     }
 
     if (showLevels) {
-      if (chartData.suggested_stop_6pct) {
+      const stopLinePx = chartData.technical_stop || chartData.suggested_stop_6pct
+      if (stopLinePx) {
         candleSeries.createPriceLine({
-          price: chartData.suggested_stop_6pct,
+          price: stopLinePx,
           color: '#ef4444',
           lineWidth: 1.5,
           lineStyle: LineStyle.Dashed,
           axisLabelVisible: true,
-          title: 'Stop -6%',
+          title: chartData.technical_stop ? 'Stop Técnico' : 'Stop -6%',
         })
       }
       if (chartData.pivot_price) {
@@ -253,7 +256,7 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
   }, [chartData, activeSeries, timeframe, range, showSma50, showSma150, showSma200, showAvwap, showRsLine, showVcpSwings, showLevels, compact])
 
   const hasWeekly = Boolean(chartData?.weekly?.candles?.length)
-  const hasVcpLegs = (chartData?.vcp_legs || []).length > 0
+  const hasVcpLegs = (chartData?.vcp_legs || []).length > 0 || (chartData?.pocket_pivot_dates || []).length > 0
   const hasAvwap = Boolean(chartData?.avwap_swing_low?.length)
 
   return (

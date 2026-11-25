@@ -89,7 +89,16 @@ export function MacroRotationModule({ onOpenXRay }) {
   const cryptoDerivs = data?.crypto_derivatives
   const rotation = marketView === 'us' ? data?.us_rotation : data?.crypto_rotation
   const retField = tf === '1w' ? 'return_1w' : tf === '3m' ? 'return_3m' : 'return_1m'
-  const rsField = tf === '1w' ? 'rs_1w' : tf === '3m' ? 'rs_3m' : 'rs_1m'
+  const rsField = tf === '1w' ? 'rs_1w' : tf === '3m' ? 'rs_3m' : tf === 'comp' ? 'composite_rs' : 'rs_1m'
+  const tfLabel = tf === '1w' ? '1S' : tf === '3m' ? '3M' : tf === 'comp' ? 'Composto' : '1M'
+
+  // Dynamically re-sort ALL sectors whenever user switches 1S / 1M / 3M / Composto
+  const sortedSectors = [...(rotation?.sectors || [])].sort(
+    (a, b) => (Number(b[rsField] ?? b.composite_rs ?? -999) - Number(a[rsField] ?? a.composite_rs ?? -999)),
+  )
+  const topCount = marketView === 'us' ? 4 : 3
+  const dynamicLeaders = sortedSectors.slice(0, topCount)
+  const dynamicLaggards = [...sortedSectors].reverse().slice(0, topCount)
 
   const lightColors = {
     green: {
@@ -436,12 +445,13 @@ export function MacroRotationModule({ onOpenXRay }) {
                   { k: '1w', l: '1S' },
                   { k: '1m', l: '1M' },
                   { k: '3m', l: '3M' },
+                  { k: 'comp', l: 'Composto' },
                 ].map((t) => (
                   <button
                     key={t.k}
                     onClick={() => setTf(t.k)}
                     className={`px-2.5 py-1 rounded-lg transition ${
-                      tf === t.k ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'
+                      tf === t.k ? 'bg-emerald-500/20 text-emerald-300 font-semibold' : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     {t.l}
@@ -459,14 +469,14 @@ export function MacroRotationModule({ onOpenXRay }) {
                     <TrendingUp className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-emerald-400">Onde o capital está a entrar (Líderes)</h4>
-                    <p className="text-[11px] text-slate-400">Procura os teus setups nestes setores</p>
+                    <h4 className="text-sm font-bold text-emerald-400">Onde o capital está a entrar (Top {topCount} • {tfLabel})</h4>
+                    <p className="text-[11px] text-slate-400">Ordenado entre todos os {sortedSectors.length} setores pelo RS de {tfLabel}</p>
                   </div>
                 </div>
                 <StatusBadge variant="green">INFLOW</StatusBadge>
               </div>
               <div className="space-y-2">
-                {(rotation?.leaders || []).map((s) => (
+                {dynamicLeaders.map((s) => (
                   <div
                     key={s.ticker || s.id}
                     onClick={() => s.ticker && onOpenXRay(s.ticker)}
@@ -486,7 +496,9 @@ export function MacroRotationModule({ onOpenXRay }) {
                         <ArrowUpRight className="w-3.5 h-3.5" />
                         RS {formatPct(s[rsField] ?? s.composite_rs)}
                       </div>
-                      <div className="text-[11px] text-slate-400">Perf {tf.toUpperCase()}: {formatPct(s[retField])}</div>
+                      <div className="text-[11px] text-slate-400">
+                        {tf === 'comp' ? `Perf 1M: ${formatPct(s.return_1m)}` : `Perf ${tfLabel}: ${formatPct(s[retField])}`}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -500,14 +512,14 @@ export function MacroRotationModule({ onOpenXRay }) {
                     <TrendingDown className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-rose-400">De onde o capital está a sair (Atrasados)</h4>
+                    <h4 className="text-sm font-bold text-rose-400">De onde o capital está a sair (Piores {topCount} • {tfLabel})</h4>
                     <p className="text-[11px] text-slate-400">Evita comprar breakouts contra a corrente</p>
                   </div>
                 </div>
                 <StatusBadge variant="red">OUTFLOW</StatusBadge>
               </div>
               <div className="space-y-2">
-                {(rotation?.laggards || []).map((s) => (
+                {dynamicLaggards.map((s) => (
                   <div
                     key={s.ticker || s.id}
                     onClick={() => s.ticker && onOpenXRay(s.ticker)}
@@ -523,11 +535,17 @@ export function MacroRotationModule({ onOpenXRay }) {
                       {s.members && <div className="text-[10px] font-mono text-slate-500 mt-0.5">{s.members.join(' • ')}</div>}
                     </div>
                     <div className="text-right font-mono">
-                      <div className="text-xs font-bold text-rose-400 inline-flex items-center gap-0.5">
+                      <div
+                        className={`text-xs font-bold inline-flex items-center gap-0.5 ${
+                          (s[rsField] ?? s.composite_rs ?? 0) >= 0 ? 'text-amber-300' : 'text-rose-400'
+                        }`}
+                      >
                         <ArrowDownRight className="w-3.5 h-3.5" />
                         RS {formatPct(s[rsField] ?? s.composite_rs)}
                       </div>
-                      <div className="text-[11px] text-slate-400">Perf {tf.toUpperCase()}: {formatPct(s[retField])}</div>
+                      <div className="text-[11px] text-slate-400">
+                        {tf === 'comp' ? `Perf 1M: ${formatPct(s.return_1m)}` : `Perf ${tfLabel}: ${formatPct(s[retField])}`}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -544,14 +562,22 @@ export function MacroRotationModule({ onOpenXRay }) {
                     <th className="px-3 py-3 text-right">1 Semana</th>
                     <th className="px-3 py-3 text-right">1 Mês</th>
                     <th className="px-3 py-3 text-right">3 Meses</th>
-                    <th className="px-3 py-3 text-right">RS 1S</th>
-                    <th className="px-3 py-3 text-right">RS 1M</th>
-                    <th className="px-3 py-3 text-right">RS 3M</th>
-                    <th className="px-4 py-3 text-right">Fluxo Composto</th>
+                    <th className={`px-3 py-3 text-right ${tf === '1w' ? 'text-emerald-300 font-bold' : ''}`}>
+                      RS 1S {tf === '1w' ? '▼' : ''}
+                    </th>
+                    <th className={`px-3 py-3 text-right ${tf === '1m' ? 'text-emerald-300 font-bold' : ''}`}>
+                      RS 1M {tf === '1m' ? '▼' : ''}
+                    </th>
+                    <th className={`px-3 py-3 text-right ${tf === '3m' ? 'text-emerald-300 font-bold' : ''}`}>
+                      RS 3M {tf === '3m' ? '▼' : ''}
+                    </th>
+                    <th className={`px-4 py-3 text-right ${tf === 'comp' ? 'text-emerald-300 font-bold' : ''}`}>
+                      Fluxo Composto {tf === 'comp' ? '▼' : ''}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-terminal-border/60 font-mono tabular-nums">
-                  {(rotation?.sectors || []).map((s) => (
+                  {sortedSectors.map((s) => (
                     <tr
                       key={s.ticker || s.id}
                       onClick={() => s.ticker && onOpenXRay(s.ticker)}
@@ -640,7 +666,7 @@ export function MacroRotationModule({ onOpenXRay }) {
                   Fonte: {cryptoDerivs?.source} • Funding muito positivo (&gt; +0.05%) = risco de queda; negativo (&lt; -0.02%) = potencial short squeeze.
                 </p>
               </div>
-              {cryptoDerivs?.avg_funding_rate_pct !== null && (
+              {typeof cryptoDerivs?.avg_funding_rate_pct === 'number' && (
                 <StatusBadge variant="cyan">Funding Médio: {cryptoDerivs.avg_funding_rate_pct >= 0 ? '+' : ''}{cryptoDerivs.avg_funding_rate_pct}%</StatusBadge>
               )}
             </div>

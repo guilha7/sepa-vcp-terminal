@@ -177,6 +177,7 @@ export default function App() {
     return (
       <WelcomeNameModal
         initialName={userName}
+        onCancel={userName ? () => setSwitchingUser(false) : null}
         onConfirm={(chosen) => {
           setUserName(chosen)
           setSwitchingUser(false)
@@ -264,6 +265,7 @@ export default function App() {
         onSelectTab={setActiveTab}
         onOpenXRay={handleOpenXRay}
         onOpenAlerts={() => setAlertsOpen(true)}
+        favorites={userPrefs.favorites}
       />
 
       <AlertsDrawer

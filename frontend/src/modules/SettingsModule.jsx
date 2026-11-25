@@ -137,10 +137,10 @@ export function SettingsModule({
       setMyCapital(saved.capitalEur)
       setMyStop(saved.stopLossPct)
       setMyRisk(saved.riskPerTradePct)
+      setPersonalFeedback(
+        `Preferências de ${userName} guardadas! A Calculadora e o teu Paper Trading já usam ${saved.capitalEur.toFixed(0)}€ e Stop -${saved.stopLossPct}%.`,
+      )
     }
-    setPersonalFeedback(
-      `Preferências de ${userName} guardadas! A Calculadora e o teu Paper Trading já usam ${Number(myCapital).toFixed(0)}€ e Stop -${Math.min(Number(myStop), 7.0)}%.`,
-    )
   }
 
   const handleAddFavorite = (e) => {

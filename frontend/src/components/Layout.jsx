@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { id: 'xray', step: '03', label: 'Raio-X de Ativo', sub: 'AVWAP, Semanal, RS & Briefing', icon: BarChart3 },
   { id: 'vision', step: '04', label: 'Visão IA Gráficos', sub: 'Colar Print (Ctrl+V)', icon: Camera },
   { id: 'risk', step: '05', label: 'Risco 6% & Diário', sub: 'FX, Auto 2R, SQN & Paper', icon: ShieldCheck },
-  { id: 'settings', step: '⚙', label: 'Definições', sub: 'IA, Capital, Pacotes & Cache', icon: Settings },
+  { id: 'settings', step: '⚙', label: 'Definições', sub: 'Perfil, Favoritos, IA & Cache', icon: Settings },
 ]
 
 export function Layout({
@@ -115,7 +115,7 @@ export function Layout({
           <div className="flex items-center justify-between">
             <span className="inline-flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${health ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
-              Servidor Local
+              Estado API
             </span>
             <span className="font-mono text-emerald-300 font-semibold">{health ? 'ONLINE' : 'OFFLINE'}</span>
           </div>
@@ -154,9 +154,9 @@ export function Layout({
             </button>
           </form>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="hidden xl:flex items-center gap-1.5 text-[11px]">
-              {['NVDA', 'AAPL', 'SPOT', 'BTC-USD', 'SOL-USD'].map((tk) => (
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden 2xl:flex items-center gap-1.5 text-[11px]">
+              {['NVDA', 'AAPL', 'EDP.LS', 'BTC-USD', 'SOL-USD'].map((tk) => (
                 <button
                   key={tk}
                   onClick={() => onQuickSearch(tk)}

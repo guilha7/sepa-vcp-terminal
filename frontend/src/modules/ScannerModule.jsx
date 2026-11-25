@@ -77,7 +77,13 @@ export function ScannerModule({
     try {
       setLoading(true)
       setError(null)
-      const res = await api.getScannerResults()
+      // Instant (<50ms) check of SQLite cache so UI renders immediately instead of blocking on a dead spinner
+      const res = await api.getScannerResults('', false, true)
+      if (res?.cache_empty || !(res?.opportunities || []).length) {
+        setLoading(false)
+        startStreamingScan(false)
+        return
+      }
       setWatchlistData(res)
     } catch (err) {
       setError(err.message)
@@ -86,12 +92,19 @@ export function ScannerModule({
     }
   }
 
-  const startStreamingScan = () => {
+  const startStreamingScan = (forceRefresh = true) => {
     if (sseCloseRef.current) sseCloseRef.current()
     setScanning(true)
     setError(null)
-    setScanProgress({ pct: 2, current: 0, total: 90, ticker: 'A iniciar...', stage: 'A ligar ao servidor...' })
+    setScanProgress({
+      pct: 4,
+      current: 0,
+      total: 90,
+      ticker: forceRefresh ? 'A iniciar...' : 'Primeiro scan após arranque...',
+      stage: forceRefresh ? 'A ligar ao servidor...' : 'A aquecer cache inicial (próximas aberturas serão instantâneas)',
+    })
     sseCloseRef.current = api.streamScanner('', {
+      forceRefresh,
       onProgress: (p) => setScanProgress(p),
       onComplete: (res) => {
         chartCacheRef.current = {}
@@ -112,6 +125,8 @@ export function ScannerModule({
     setUsPreset(presetId)
     setScanMode('us_all')
     setAssetFilter('all')
+    setStageFilter('all')
+    setMinScore(0)
     setScanning(true)
     setError(null)
     setScanProgress({
@@ -172,6 +187,10 @@ export function ScannerModule({
   }
 
   const favoriteSet = useMemo(() => new Set((favorites || []).map((t) => t.toUpperCase())), [favorites])
+  const favoritesInScanCount = useMemo(
+    () => (data?.opportunities || []).filter((item) => favoriteSet.has(item.ticker.toUpperCase())).length,
+    [data, favoriteSet],
+  )
 
   const filtered = useMemo(() => {
     const items = data?.opportunities || []
@@ -280,7 +299,7 @@ export function ScannerModule({
     setExpanded((prev) => ({ ...prev, [ticker]: !prev[ticker] }))
   }
 
-  if (loading && !data) {
+  if (loading && !data && !scanning) {
     return (
       <div className="terminal-card p-10 text-center space-y-3">
         <div className="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -322,7 +341,7 @@ export function ScannerModule({
             Watchlist
           </button>
           <button
-            onClick={() => (scanMode === 'us_all' ? startUsDiscoveryScan(usPreset, true) : startStreamingScan())}
+            onClick={() => (scanMode === 'us_all' ? startUsDiscoveryScan(usPreset, true) : startStreamingScan(true))}
             disabled={scanning}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition disabled:opacity-50"
           >
@@ -462,7 +481,7 @@ export function ScannerModule({
         <div className="inline-flex flex-wrap rounded-xl bg-[#060a13] border border-terminal-border p-0.5 text-xs">
           {[
             { k: 'all', l: 'Todos' },
-            { k: 'favorites', l: `★ Favoritos (${favorites.length})` },
+            { k: 'favorites', l: `★ Favoritos (${favoritesInScanCount})` },
             { k: 'stage2', l: `Stage 2 (${summary.stage2_count ?? 0})` },
             { k: 'vcp', l: `VCP (${summary.vcp_count ?? 0})` },
             { k: 'pocket', l: `Pocket Pivot (${summary.pocket_pivot_count ?? 0})` },
@@ -509,6 +528,10 @@ export function ScannerModule({
           />
           <span className="font-mono text-cyan-300 w-6">{minScore}</span>
         </label>
+
+        <span className="text-[11px] font-mono text-slate-400">
+          A mostrar <strong className="text-white">{filtered.length}</strong>/{(data?.opportunities || []).length}
+        </span>
 
         {splitMode && (
           <span className="hidden lg:inline-flex items-center gap-1 text-[10px] font-mono text-slate-500">
@@ -850,6 +873,11 @@ export function ScannerModule({
                         >
                           {item.ticker}
                         </button>
+                        {item.is_new_discovery && (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-mono text-[10px] font-bold">
+                            NOVA
+                          </span>
+                        )}
                         <StatusBadge variant={item.asset_type === 'crypto' ? 'purple' : 'slate'}>
                           {item.asset_type === 'crypto' ? 'CRIPTO' : 'AÇÃO'}
                         </StatusBadge>

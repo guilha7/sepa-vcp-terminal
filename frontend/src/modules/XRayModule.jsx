@@ -74,9 +74,38 @@ export function XRayModule({
   if (error) {
     return (
       <div className="space-y-4">
-        <div className="terminal-card p-6 border-rose-500/40 text-rose-300 space-y-3">
-          <p className="font-semibold">Não foi possível carregar o Raio-X de "{ticker}": {error}</p>
-          <p className="text-xs text-slate-400">Verifica o símbolo (ex: NVDA, AAPL, MSFT, BTC-USD, SOL-USD).</p>
+        <div className="terminal-card p-6 border-rose-500/40 text-rose-300 space-y-4">
+          <div>
+            <p className="font-semibold">Não foi possível carregar o Raio-X de &quot;{ticker}&quot;: {error}</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Verifica o símbolo Yahoo Finance (ex.: EUA `NVDA`, `AAPL`; Portugal `EDP.LS`, `GALP.LS`; Europa `SAP.DE`, `MC.PA`; Cripto `BTC-USD`, `SOL-USD`).
+            </p>
+          </div>
+          <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={inputVal}
+              onChange={(e) => setInputVal(e.target.value)}
+              placeholder="Escreve outro ticker..."
+              className="w-48 px-3 py-2 text-xs font-mono bg-[#070b14] border border-terminal-border rounded-lg text-white focus:outline-none focus:border-cyan-400"
+            />
+            <button
+              type="submit"
+              className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-200"
+            >
+              Pesquisar Outro
+            </button>
+            {['NVDA', 'EDP.LS', 'BTC-USD'].map((tk) => (
+              <button
+                key={tk}
+                type="button"
+                onClick={() => onChangeTicker(tk)}
+                className="px-2.5 py-1.5 text-xs font-mono rounded-lg bg-terminal-card border border-terminal-border hover:border-cyan-500/50 text-slate-300"
+              >
+                {tk}
+              </button>
+            ))}
+          </form>
         </div>
       </div>
     )
@@ -110,7 +139,10 @@ export function XRayModule({
           </div>
 
           <div className="flex flex-wrap items-baseline gap-4 font-mono">
-            <span className="text-3xl font-bold text-white tabular-nums">{formatPrice(sepa.price)}</span>
+            <span className="text-3xl font-bold text-white tabular-nums">
+              {formatPrice(sepa.price)}
+              <span className="ml-1.5 text-sm font-normal text-slate-400">{fund.currency || 'USD'}</span>
+            </span>
             <span className={`text-sm font-semibold ${sepa.daily_change_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
               {formatPct(sepa.daily_change_pct)} hoje
             </span>
@@ -541,7 +573,7 @@ export function XRayModule({
                       {data.institutional.quarterly_financials.map((q) => (
                         <tr key={q.quarter}>
                           <td className="py-1.5 text-slate-300">{q.quarter}</td>
-                          <td className="py-1.5 text-right text-white font-semibold">{formatCompactNumber(q.revenue)}</td>
+                          <td className="py-1.5 text-right text-white font-semibold">{formatCompactNumber(q.revenue, fund.currency)}</td>
                           <td
                             className={`py-1.5 text-right ${
                               (q.rev_qoq_pct || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
@@ -549,7 +581,7 @@ export function XRayModule({
                           >
                             {q.rev_qoq_pct !== null && q.rev_qoq_pct !== undefined ? formatPct(q.rev_qoq_pct) : '—'}
                           </td>
-                          <td className="py-1.5 text-right text-slate-200">{formatCompactNumber(q.net_income)}</td>
+                          <td className="py-1.5 text-right text-slate-200">{formatCompactNumber(q.net_income, fund.currency)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -701,7 +733,7 @@ export function XRayModule({
             <h3 className="text-sm font-bold text-white mb-3">Fundamentais & Earnings</h3>
             <div className="grid grid-cols-2 gap-2.5 text-xs font-mono">
               {[
-                { label: 'Market Cap', value: formatCompactNumber(fund.market_cap) },
+                { label: 'Market Cap', value: formatCompactNumber(fund.market_cap, fund.currency) },
                 {
                   label: 'Próximos Earnings',
                   value: fund.next_earnings_date

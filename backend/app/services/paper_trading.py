@@ -349,8 +349,8 @@ class PaperTradingService:
                 if px is not None:
                     price_cache[t] = px
             tmode = pos.get("trailing_stop_mode") or "NONE"
-            if tmode in ("SMA10", "SMA21") and t not in sma_cache:
-                win = 10 if tmode == "SMA10" else 21
+            if tmode in ("SMA10", "SMA21", "SMA50") and t not in sma_cache:
+                win = 10 if tmode == "SMA10" else (21 if tmode == "SMA21" else 50)
                 sma_val = self._get_trailing_sma(t, win)
                 if sma_val is not None:
                     sma_cache[t] = sma_val
@@ -405,8 +405,8 @@ class PaperTradingService:
                         {"title": f"Alvo 2R + Breakeven: {t}", "message": msg, "level": "success", "category": "TARGET_2R_PARTIAL", "ticker": t}
                     )
 
-                # 2. Trailing Stop by SMA10 / SMA21 (only ratchets stop UPWARD while in profit)
-                if tmode in ("SMA10", "SMA21") and t in sma_cache and live_px > entry:
+                # 2. Trailing Stop by SMA10 / SMA21 / SMA50 (only ratchets stop UPWARD while in profit)
+                if tmode in ("SMA10", "SMA21", "SMA50") and t in sma_cache and live_px > entry:
                     sma_val = float(sma_cache[t])
                     if sma_val > stop_px and sma_val < live_px:
                         stop_px = round(sma_val, 6)

@@ -512,6 +512,7 @@ def get_fundamentals_and_earnings(
 
             if not is_crypto:
                 quote_type = str(info.get("quoteType") or "").upper()
+                base_data["quote_type"] = quote_type
                 base_data["sector"] = info.get("sector") or ("ETF Setorial / Índice" if quote_type == "ETF" else None)
                 base_data["industry"] = info.get("industry") or (info.get("category") if quote_type == "ETF" else None)
                 base_data["trailing_pe"] = _safe_float(info.get("trailingPE"))

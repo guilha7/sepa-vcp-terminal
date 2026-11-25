@@ -20,8 +20,9 @@ router = APIRouter(prefix="/api/scanner", tags=["Scanner SEPA & VCP"])
 def get_scanner_results(
     asset_type: Optional[str] = Query(default=None, pattern="^(stock|crypto)$"),
     force_refresh: bool = Query(default=False),
+    cache_only: bool = Query(default=False),
 ):
-    return run_sepa_vcp_scan(asset_type=asset_type, force_refresh=force_refresh)
+    return run_sepa_vcp_scan(asset_type=asset_type, force_refresh=force_refresh, cache_only=cache_only)
 
 
 @router.post("/run")

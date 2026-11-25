@@ -34,7 +34,7 @@ class PaperPositionCreate(BaseModel):
     stop_loss_pct: float = Field(default=6.0, gt=0.1, le=7.0)
     quantity: Optional[float] = Field(default=None, gt=0)
     auto_manage_2r: bool = Field(default=True, description="Vender 50% em 2R e mover stop para Breakeven")
-    trailing_stop_mode: Literal["NONE", "SMA10", "SMA21"] = Field(default="NONE")
+    trailing_stop_mode: Literal["NONE", "SMA10", "SMA21", "SMA50"] = Field(default="NONE")
     setup_tag: str = Field(default="VCP", max_length=32)
     journal_emotion: str = Field(default="DISCIPLINADO", max_length=32)
     journal_lesson: str = Field(default="", max_length=500)
@@ -60,7 +60,7 @@ class PaperPositionJournalUpdate(BaseModel):
     journal_lesson: Optional[str] = Field(default=None, max_length=500)
     notes: Optional[str] = Field(default=None, max_length=500)
     auto_manage_2r: Optional[bool] = None
-    trailing_stop_mode: Optional[Literal["NONE", "SMA10", "SMA21"]] = None
+    trailing_stop_mode: Optional[Literal["NONE", "SMA10", "SMA21", "SMA50"]] = None
 
 
 class PriceAlertCreate(BaseModel):

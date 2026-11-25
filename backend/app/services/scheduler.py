@@ -1,4 +1,7 @@
 import logging
+import os
+import sys
+import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
@@ -11,6 +14,18 @@ from app.services.scanner_service import run_sepa_vcp_scan
 logger = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
+_warmup_started = False
+
+
+def _run_startup_warmup() -> None:
+    """Silently pre-warms Macro & Scanner SQLite cache right after server boot (especially helpful on Render Free Tier)."""
+    try:
+        logger.info("[Warmup] A pré-carregar Macro & Scanner em background após arranque...")
+        compute_macro_and_rotation(force_refresh=False)
+        run_sepa_vcp_scan(asset_type=None, force_refresh=False)
+        logger.info("[Warmup] Cache inicial Macro + Scanner pronta!")
+    except Exception as exc:
+        logger.warning("[Warmup] Pré-aquecimento inicial incompleto: %s", exc)
 
 
 def _job_refresh_macro() -> None:
@@ -76,6 +91,14 @@ def start_scheduler() -> None:
         settings.scheduler_paper_minutes,
         settings.scheduler_scan_hours,
     )
+
+    global _warmup_started
+    is_test_env = bool(os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in sys.modules)
+    if not _warmup_started and not is_test_env:
+        _warmup_started = True
+        timer = threading.Timer(3.0, _run_startup_warmup)
+        timer.daemon = True
+        timer.start()
 
 
 def stop_scheduler() -> None:

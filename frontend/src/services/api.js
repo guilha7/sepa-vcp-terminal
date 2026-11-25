@@ -103,10 +103,11 @@ export const api = {
     request(`/macro/overview?force_refresh=${forceRefresh}`),
 
   // Module 2: SEPA/VCP Scanner, SSE Streaming & Quick Chart
-  getScannerResults: (assetType = '', forceRefresh = false) => {
+  getScannerResults: (assetType = '', forceRefresh = false, cacheOnly = false) => {
     const params = new URLSearchParams()
     if (assetType) params.set('asset_type', assetType)
     if (forceRefresh) params.set('force_refresh', 'true')
+    if (cacheOnly) params.set('cache_only', 'true')
     const q = params.toString()
     return request(`/scanner/results${q ? `?${q}` : ''}`)
   },
@@ -114,8 +115,8 @@ export const api = {
     const q = assetType ? `?asset_type=${assetType}` : ''
     return request(`/scanner/run${q}`, { method: 'POST' })
   },
-  streamScanner: (assetType = '', { onProgress, onComplete, onError }) => {
-    const params = new URLSearchParams({ force_refresh: 'true' })
+  streamScanner: (assetType = '', { forceRefresh = true, onProgress, onComplete, onError }) => {
+    const params = new URLSearchParams({ force_refresh: String(Boolean(forceRefresh)) })
     if (assetType) params.set('asset_type', assetType)
     const token = getStoredAccessToken()
     if (token) params.set('access_token', token)
@@ -283,14 +284,18 @@ export function formatPct(val, showSign = true) {
   return `${sign}${n.toFixed(2)}%`
 }
 
-export function formatCompactNumber(val) {
+export function formatCompactNumber(val, currency = 'USD') {
   if (val === null || val === undefined || Number.isNaN(Number(val))) return '—'
   const n = Number(val)
-  if (Math.abs(n) >= 1e12) return `$${(n / 1e12).toFixed(2)}T`
-  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`
-  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(1)}M`
-  if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(1)}K`
-  return `$${n.toFixed(0)}`
+  const sign = n < 0 ? '-' : ''
+  const abs = Math.abs(n)
+  const ccy = (currency || 'USD').toUpperCase()
+  const prefix = ccy === 'EUR' ? '€' : ccy === 'GBP' ? '£' : '$'
+  if (abs >= 1e12) return `${sign}${prefix}${(abs / 1e12).toFixed(2)}T`
+  if (abs >= 1e9) return `${sign}${prefix}${(abs / 1e9).toFixed(2)}B`
+  if (abs >= 1e6) return `${sign}${prefix}${(abs / 1e6).toFixed(1)}M`
+  if (abs >= 1e3) return `${sign}${prefix}${(abs / 1e3).toFixed(1)}K`
+  return `${sign}${prefix}${abs.toFixed(0)}`
 }
 
 export function formatTimestamp(ts) {
