@@ -121,7 +121,7 @@ export function ScannerModule({
       ticker: 'NYSE / NASDAQ',
       stage: 'Fase 1: A varrer ~7.000 ações dos EUA...',
     })
-    sseCloseRef.current = api.streamUsDiscovery(presetId, 70, forceRefresh, {
+    sseCloseRef.current = api.streamUsDiscovery(presetId, 45, forceRefresh, {
       onProgress: (p) => setScanProgress(p),
       onComplete: (res) => {
         chartCacheRef.current = {}

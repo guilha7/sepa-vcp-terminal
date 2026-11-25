@@ -58,9 +58,19 @@ def run_sepa_vcp_scan(
             if progress_callback:
                 progress_callback(0, total, "SPY / BTC-USD", "A descarregar histórico OHLCV em lote...")
 
+            def _on_wl_batch(done_chunks: int, total_chunks: int, label: str):
+                if progress_callback:
+                    pct_done = int(round((done_chunks / max(total_chunks, 1)) * (total * 0.4)))
+                    progress_callback(pct_done, total, label, f"A descarregar OHLCV ({done_chunks}/{total_chunks} lotes)")
+
             bench_tickers = ["SPY", "BTC-USD"]
             fetch_list = list(dict.fromkeys(bench_tickers + tickers))
-            dfs, sources, warnings = get_batch_ohlcv(fetch_list, period="15mo", force_refresh=force_refresh)
+            dfs, sources, warnings = get_batch_ohlcv(
+                fetch_list,
+                period="15mo",
+                force_refresh=force_refresh,
+                progress_callback=_on_wl_batch,
+            )
             spy_df = dfs.get("SPY")
             btc_df = dfs.get("BTC-USD")
 
@@ -159,14 +169,14 @@ def run_sepa_vcp_scan(
 
 def run_us_discovery_scan(
     preset: str = "sepa_leaders",
-    limit: int = 70,
+    limit: int = 45,
     force_refresh: bool = False,
     progress_callback: Optional[ProgressFn] = None,
 ) -> dict[str, Any]:
     """
-    2-Stage All-US Discovery Scanner (~7,000 NYSE/NASDAQ/AMEX stocks):
-    Stage 1 (~1s): Pre-screen entire US stock market for Stage-2 / momentum leaders (0€ / no API key).
-    Stage 2 (~15-25s): Deep SEPA/VCP + Multi-Strategy Quant + Earnings check on the top discovered stocks.
+    2-Stage All-US / Europe / Portugal Discovery Scanner:
+    Stage 1 (~1s): Pre-screen entire market (~7,000 US or Eurozone/PSI stocks) for Stage-2/momentum leaders.
+    Stage 2 (~8-18s): Deep SEPA/VCP + Multi-Strategy Quant + Earnings check on the top discovered stocks.
     Results are cached 30 min per preset in SQLite without altering the admin's global watchlist.
     """
     capped_limit = max(20, min(int(limit), 100))
@@ -175,12 +185,12 @@ def run_us_discovery_scan(
         cached = db.cache_get(cache_key)
         if cached and isinstance(cached, dict):
             if progress_callback:
-                progress_callback(100, 100, "CACHE", "Descoberta EUA carregada da cache SQLite")
+                progress_callback(100, 100, "CACHE", "Descoberta carregada da cache SQLite")
             cached["from_cache"] = True
             return cached
 
     if progress_callback:
-        progress_callback(2, 100, "NYSE/NASDAQ", "Fase 1: A filtrar todas as ~7.000 ações dos EUA...")
+        progress_callback(3, 100, "Fase 1", "A pré-filtrar todo o mercado selecionado...")
 
     stage1 = screen_all_us_candidates(preset=preset, limit=capped_limit)
     tickers = stage1["tickers"]
@@ -192,12 +202,22 @@ def run_us_discovery_scan(
         progress_callback(
             12,
             100,
-            f"{stage1['total_matched_stage1']} Stage 2",
-            f"Fase 1 OK ({stage1['total_matched_stage1']} ações nos EUA) → A descarregar OHLCV das Top {len(tickers)}...",
+            f"{stage1['total_matched_stage1']} candidatas",
+            f"Fase 1 OK ({stage1['total_matched_stage1']} ações) → A descarregar Top {len(tickers)}...",
         )
 
+    def _on_batch_progress(done_chunks: int, total_chunks: int, label: str):
+        if progress_callback:
+            pct = 12 + int(round((done_chunks / max(total_chunks, 1)) * 43))
+            progress_callback(pct, 100, label, f"A descarregar histórico OHLCV ({done_chunks}/{total_chunks} lotes)")
+
     fetch_list = list(dict.fromkeys(["SPY"] + tickers))
-    dfs, sources, batch_warnings = get_batch_ohlcv(fetch_list, period="15mo", force_refresh=False)
+    dfs, sources, batch_warnings = get_batch_ohlcv(
+        fetch_list,
+        period="15mo",
+        force_refresh=False,
+        progress_callback=_on_batch_progress,
+    )
     warnings.extend(batch_warnings)
     spy_df = dfs.get("SPY")
 
@@ -206,7 +226,7 @@ def run_us_discovery_scan(
 
     for idx, t in enumerate(tickers, start=1):
         if progress_callback and (idx == 1 or idx % 3 == 0 or idx == total):
-            pct = 15 + int(round((idx / total) * 65))
+            pct = 56 + int(round((idx / total) * 28))
             progress_callback(pct, 100, t, f"Fase 2: Análise SEPA/VCP/Quant ({idx}/{total})")
 
         df = dfs.get(t)
@@ -233,12 +253,12 @@ def run_us_discovery_scan(
 
     preliminary = assign_cross_sectional_rs_ratings(preliminary)
 
-    # Enrich top 15 highest-scoring discoveries with Earnings & Fundamentals
+    # Enrich top 8 highest-scoring discoveries with Earnings & Fundamentals (fast on Render free tier)
     priority = sorted(
         [r for r in preliminary if r["liquidity"]["passed"]],
         key=lambda x: x["score"],
         reverse=True,
-    )[:15]
+    )[:8]
     for e_idx, item in enumerate(priority, start=1):
         t = item["ticker"]
         if progress_callback:

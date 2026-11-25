@@ -252,9 +252,11 @@ def get_batch_ohlcv(
     tickers: list[str],
     period: str = "15mo",
     force_refresh: bool = False,
+    progress_callback=None,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, str], list[str]]:
     """
     Fetch OHLCV for many tickers efficiently using SQLite cache + chunked yf.download + ccxt for crypto.
+    Uses cloud-safe concurrency (chunk=15, threads=4, timeout=15s) and optional progress_callback(done, total, label).
     Returns (dataframes_by_ticker, sources_by_ticker, warnings).
     """
     result: dict[str, pd.DataFrame] = {}
@@ -289,13 +291,23 @@ def get_batch_ohlcv(
         else:
             crypto_yf_fallback.append(ct)
 
-    # 2. Batch download stocks + crypto fallbacks via yf.download in chunks of 25
+    # 2. Batch download stocks + crypto fallbacks via yf.download in cloud-safe chunks of 15 (4 threads, 15s timeout)
     yf_queue = missing_stocks + crypto_yf_fallback
-    chunk_size = 25
-    for i in range(0, len(yf_queue), chunk_size):
+    chunk_size = 15
+    total_chunks = max(1, (len(yf_queue) + chunk_size - 1) // chunk_size)
+    for chunk_idx, i in enumerate(range(0, len(yf_queue), chunk_size), start=1):
         chunk = yf_queue[i : i + chunk_size]
+        if progress_callback:
+            try:
+                progress_callback(
+                    chunk_idx - 1,
+                    total_chunks,
+                    f"Lote {chunk_idx}/{total_chunks} ({chunk[0]}…{chunk[-1]})",
+                )
+            except Exception:
+                pass
         if i > 0:
-            time.sleep(0.45)  # Polite pacing between Yahoo Finance chunks
+            time.sleep(0.35)  # Polite pacing between Yahoo Finance chunks
         try:
             _rate_limit_wait()
             raw = yf.download(
@@ -304,7 +316,8 @@ def get_batch_ohlcv(
                 interval="1d",
                 group_by="ticker",
                 auto_adjust=True,
-                threads=True,
+                threads=4,
+                timeout=15,
                 progress=False,
             )
             if raw is None or raw.empty:
@@ -332,6 +345,11 @@ def get_batch_ohlcv(
         except Exception as exc:
             warnings.append(f"Falha parcial no download em lote ({chunk[0]}..{chunk[-1]}): {exc}")
             logger.warning("yf.download batch falhou: %s", exc)
+        if progress_callback:
+            try:
+                progress_callback(chunk_idx, total_chunks, f"Lote {chunk_idx}/{total_chunks} concluído")
+            except Exception:
+                pass
 
     # 3. Stale cache fallback for any still-missing ticker
     for t in unique_tickers:

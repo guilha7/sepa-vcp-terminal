@@ -69,7 +69,7 @@ def stream_scanner_run(
     def event_gen():
         while True:
             try:
-                evt = q.get(timeout=25.0)
+                evt = q.get(timeout=5.0)
             except queue.Empty:
                 yield ": keepalive\n\n"
                 continue
@@ -96,7 +96,7 @@ def get_us_discovery_presets():
 @router.get("/us-discovery")
 def get_us_discovery_results(
     preset: str = Query(default="sepa_leaders"),
-    limit: int = Query(default=70, ge=20, le=100),
+    limit: int = Query(default=45, ge=20, le=100),
     force_refresh: bool = Query(default=False),
 ):
     return run_us_discovery_scan(preset=preset, limit=limit, force_refresh=force_refresh)
@@ -105,7 +105,7 @@ def get_us_discovery_results(
 @router.get("/us-discovery/stream")
 def stream_us_discovery_scan(
     preset: str = Query(default="sepa_leaders"),
-    limit: int = Query(default=70, ge=20, le=100),
+    limit: int = Query(default=45, ge=20, le=100),
     force_refresh: bool = Query(default=False),
 ):
     """SSE live progress stream for 2-Stage All-US (~7,000 stocks) Discovery Scanner."""
@@ -142,7 +142,7 @@ def stream_us_discovery_scan(
     def event_gen():
         while True:
             try:
-                evt = q.get(timeout=25.0)
+                evt = q.get(timeout=5.0)
             except queue.Empty:
                 yield ": keepalive\n\n"
                 continue
