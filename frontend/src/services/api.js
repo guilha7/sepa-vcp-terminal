@@ -1,5 +1,7 @@
 const API_BASE = '/api'
 const TOKEN_STORAGE_KEY = 'sepa_access_token'
+const ADMIN_TOKEN_KEY = 'sepa_admin_token'
+const USER_NAME_KEY = 'sepa_user_name'
 
 export function getStoredAccessToken() {
   try {
@@ -18,12 +20,51 @@ export function setStoredAccessToken(token) {
   }
 }
 
+export function getStoredAdminToken() {
+  try {
+    return localStorage.getItem(ADMIN_TOKEN_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function setStoredAdminToken(token) {
+  try {
+    if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token)
+    else localStorage.removeItem(ADMIN_TOKEN_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+export function getStoredUserName() {
+  try {
+    return (localStorage.getItem(USER_NAME_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+export function setStoredUserName(name) {
+  try {
+    const clean = (name || '').trim()
+    if (clean) localStorage.setItem(USER_NAME_KEY, clean)
+    else localStorage.removeItem(USER_NAME_KEY)
+  } catch {
+    // ignore
+  }
+}
+
 async function request(path, options = {}) {
   const token = getStoredAccessToken()
+  const adminToken = getStoredAdminToken()
+  const userName = getStoredUserName()
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { 'X-Access-Token': token } : {}),
+      ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
+      ...(userName ? { 'X-User-Name': userName } : {}),
       ...(options.headers || {}),
     },
     ...options,
@@ -53,6 +94,8 @@ export const api = {
   getAuthStatus: () => request('/auth/status'),
   login: (password) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
+  adminLogin: (password) =>
+    request('/auth/admin-login', { method: 'POST', body: JSON.stringify({ password }) }),
   getHealth: () => request('/health'),
 
   // Module 1: Macro & Sector Rotation

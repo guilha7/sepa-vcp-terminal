@@ -7,6 +7,7 @@ import {
   Database,
   ExternalLink,
   Layers,
+  Lock,
   RefreshCw,
   Save,
   ShieldCheck,
@@ -14,10 +15,13 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react'
-import { api } from '../services/api'
+import { api, setStoredAdminToken } from '../services/api'
 import { StatusBadge } from '../components/StatusBadge'
 
-export function SettingsModule({ onSettingsSaved, onOpenAlerts }) {
+export function SettingsModule({ onSettingsSaved, onOpenAlerts, adminRequired = false, isAdmin = true, onAdminUnlocked }) {
+  const [adminPwd, setAdminPwd] = useState('')
+  const [adminErr, setAdminErr] = useState(null)
+  const [unlocking, setUnlocking] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -86,8 +90,64 @@ export function SettingsModule({ onSettingsSaved, onOpenAlerts }) {
   }
 
   useEffect(() => {
-    load()
-  }, [])
+    if (!adminRequired || isAdmin) {
+      load()
+    } else {
+      setLoading(false)
+    }
+  }, [adminRequired, isAdmin])
+
+  const handleAdminUnlock = async (e) => {
+    e.preventDefault()
+    if (!adminPwd.trim()) return
+    try {
+      setUnlocking(true)
+      setAdminErr(null)
+      const res = await api.adminLogin(adminPwd)
+      setStoredAdminToken(res.admin_token || '')
+      setAdminPwd('')
+      onAdminUnlocked?.()
+    } catch (err) {
+      setAdminErr(err.message || 'Password de Administrador incorreta.')
+    } finally {
+      setUnlocking(false)
+    }
+  }
+
+  if (adminRequired && !isAdmin) {
+    return (
+      <div className="max-w-md mx-auto mt-10">
+        <form onSubmit={handleAdminUnlock} className="terminal-card p-6 space-y-4 border-amber-500/35">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-300">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-display text-base font-bold text-white">Área Reservada ao Administrador</h2>
+              <p className="text-[11px] text-slate-400">
+                As definições da chave IA, cache e canais de alerta estão protegidas para uso pessoal do dono do site.
+              </p>
+            </div>
+          </div>
+          <input
+            type="password"
+            value={adminPwd}
+            onChange={(e) => setAdminPwd(e.target.value)}
+            placeholder="Password de Administrador (ADMIN_PASSWORD)"
+            className="w-full px-3.5 py-2 text-xs font-mono bg-[#060a13] border border-terminal-border rounded-xl text-white focus:outline-none focus:border-amber-400"
+          />
+          {adminErr && <p className="text-xs text-rose-400">{adminErr}</p>}
+          <button
+            type="submit"
+            disabled={unlocking}
+            className="w-full py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-xs font-semibold text-amber-200 transition"
+          >
+            {unlocking ? 'A desbloquear...' : 'Desbloquear Modo Admin'}
+          </button>
+        </form>
+      </div>
+    )
+  }
 
   const handleSaveAll = async (e) => {
     e?.preventDefault()

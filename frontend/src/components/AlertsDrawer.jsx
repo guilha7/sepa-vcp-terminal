@@ -13,7 +13,7 @@ import {
 import { api, formatPrice, formatTimestamp } from '../services/api'
 import { StatusBadge } from './StatusBadge'
 
-export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAlertsChanged }) {
+export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAlertsChanged, isAdmin = true }) {
   const [tab, setTab] = useState('feed') // feed | price | channels
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -204,7 +204,7 @@ export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAl
           {[
             { k: 'feed', l: `Feed (${data?.unread_count || 0})` },
             { k: 'price', l: `Alertas de Preço (${(data?.price_alerts || []).filter((p) => p.active).length})` },
-            { k: 'channels', l: 'Telegram / Discord' },
+            ...(isAdmin ? [{ k: 'channels', l: 'Telegram / Discord' }] : []),
           ].map((t) => (
             <button
               key={t.k}
@@ -239,15 +239,17 @@ export function AlertsDrawer({ open, onClose, prefillAlert, onClearPrefill, onAl
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-slate-400">Histórico de notificações</span>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleSendMorningBriefing}
-                    disabled={checking}
-                    className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-semibold"
-                    title="Envia agora o Briefing Matinal (Macro + IBD + Breadth + Top Setups) para o Telegram"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    Enviar Briefing Agora
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={handleSendMorningBriefing}
+                      disabled={checking}
+                      className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 font-semibold"
+                      title="Envia agora o Briefing Matinal (Macro + IBD + Breadth + Top Setups) para o Telegram"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Enviar Briefing Agora
+                    </button>
+                  )}
                   <button
                     onClick={handleMarkRead}
                     className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"

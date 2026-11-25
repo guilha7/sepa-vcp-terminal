@@ -32,6 +32,13 @@ def _expected_access_token() -> str:
     return hmac.new(pwd.encode("utf-8"), b"sepa-vcp-terminal-session-v1", hashlib.sha256).hexdigest()
 
 
+def _expected_admin_token() -> str:
+    pwd = (settings.admin_password or "").strip()
+    if not pwd:
+        return ""
+    return hmac.new(pwd.encode("utf-8"), b"sepa-vcp-terminal-admin-v1", hashlib.sha256).hexdigest()
+
+
 def _is_request_authorized(request: Request) -> bool:
     expected = _expected_access_token()
     if not expected:
@@ -45,6 +52,14 @@ def _is_request_authorized(request: Request) -> bool:
         auth = request.headers.get("authorization", "")
         if auth.lower().startswith("bearer "):
             token = auth[7:].strip()
+    return bool(token and hmac.compare_digest(token, expected))
+
+
+def _is_admin_authorized(request: Request) -> bool:
+    expected = _expected_admin_token()
+    if not expected:
+        return True
+    token = (request.headers.get("x-admin-token") or "").strip()
     return bool(token and hmac.compare_digest(token, expected))
 
 
@@ -80,20 +95,46 @@ app.add_middleware(
 )
 
 
+ADMIN_PROTECTED_EXACT = {
+    ("GET", "/api/settings"),
+    ("PUT", "/api/settings"),
+    ("POST", "/api/settings/test-ai"),
+    ("POST", "/api/settings/universe-pack"),
+    ("POST", "/api/settings/cache/clear"),
+    ("POST", "/api/alerts/channels"),
+    ("POST", "/api/alerts/test"),
+    ("POST", "/api/alerts/send-morning-briefing"),
+    ("POST", "/api/alerts/export-cloud"),
+    ("POST", "/api/scanner/watchlist"),
+}
+
+
 @app.middleware("http")
 async def optional_password_gate(request: Request, call_next):
-    """Protects /api/* when APP_ACCESS_PASSWORD is set (e.g., public Render deploy), while keeping /api/health open for UptimeRobot."""
+    """Enforces optional APP_ACCESS_PASSWORD and ADMIN_PASSWORD (protecting Settings & Telegram channels from friends)."""
     path = request.url.path
+    method = request.method.upper()
+
     if (
         path.startswith("/api/")
-        and path not in ("/api/health", "/api/auth/status", "/api/auth/login")
-        and request.method != "OPTIONS"
+        and path not in ("/api/health", "/api/auth/status", "/api/auth/login", "/api/auth/admin-login")
+        and method != "OPTIONS"
     ):
         if not _is_request_authorized(request):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Acesso protegido por password. Faz login para continuar."},
             )
+
+        is_admin_route = (method, path) in ADMIN_PROTECTED_EXACT or (
+            method == "DELETE" and path.startswith("/api/scanner/watchlist/")
+        )
+        if is_admin_route and not _is_admin_authorized(request):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Área reservada ao Administrador. Insere a ADMIN_PASSWORD para alterar definições ou canais de alerta."},
+            )
+
     return await call_next(request)
 
 
@@ -104,9 +145,12 @@ class LoginRequest(BaseModel):
 @app.get("/api/auth/status")
 def auth_status(request: Request):
     required = bool((settings.app_access_password or "").strip())
+    admin_required = bool((settings.admin_password or "").strip())
     return {
         "password_required": required,
         "authenticated": _is_request_authorized(request),
+        "admin_password_required": admin_required,
+        "is_admin": _is_admin_authorized(request),
     }
 
 
@@ -118,6 +162,16 @@ def auth_login(payload: LoginRequest):
     if not hmac.compare_digest(payload.password.strip(), pwd):
         raise HTTPException(status_code=401, detail="Password incorreta.")
     return {"status": "ok", "token": _expected_access_token()}
+
+
+@app.post("/api/auth/admin-login")
+def auth_admin_login(payload: LoginRequest):
+    pwd = (settings.admin_password or "").strip()
+    if not pwd:
+        return {"status": "ok", "admin_token": ""}
+    if not hmac.compare_digest(payload.password.strip(), pwd):
+        raise HTTPException(status_code=403, detail="Password de Administrador incorreta.")
+    return {"status": "ok", "admin_token": _expected_admin_token()}
 
 
 app.include_router(macro.router)

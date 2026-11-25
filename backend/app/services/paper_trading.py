@@ -108,6 +108,13 @@ def calculate_position(req: PositionCalcRequest) -> dict[str, Any]:
     }
 
 
+def _clean_owner(owner_name: Optional[str]) -> str:
+    raw = (owner_name or "").strip()
+    if not raw:
+        return "default"
+    return raw[:32].lower()
+
+
 class PaperTradingService:
     def __init__(
         self,
@@ -117,11 +124,12 @@ class PaperTradingService:
         self.db = database
         self.notifier = notifier or (default_notifier if database is default_db else NotificationService(database))
 
-    def open_position(self, req: PaperPositionCreate) -> dict[str, Any]:
+    def open_position(self, req: PaperPositionCreate, owner_name: str = "default") -> dict[str, Any]:
         stop_pct = float(req.stop_loss_pct)
         if stop_pct > settings.max_stop_loss_pct:
             raise ValueError(f"Stop-Loss máximo absoluto permitido é {settings.max_stop_loss_pct}%.")
 
+        owner = _clean_owner(owner_name)
         ticker = normalize_ticker(req.ticker)
         asset_type = "crypto" if (req.asset_type == "crypto" or is_crypto_ticker(ticker)) else "stock"
         fx_rate, _ = _resolve_fx(req.asset_currency, req.fx_rate_override)
@@ -145,16 +153,17 @@ class PaperTradingService:
             cur = conn.execute(
                 """
                 INSERT INTO paper_positions (
-                    ticker, asset_type, currency, fx_rate_eurusd,
+                    owner_name, ticker, asset_type, currency, fx_rate_eurusd,
                     entry_price, quantity, initial_quantity, capital_allocated,
                     stop_loss_pct, stop_loss_price, target_2r, target_3r,
                     current_price, exit_price, pnl_eur, realized_partial_pnl_eur, pnl_pct,
                     partial_2r_taken, breakeven_moved, auto_manage_2r, trailing_stop_mode,
                     setup_tag, journal_emotion, journal_lesson,
                     status, notes, opened_at, closed_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0.0, 0.0, 0.0, 0, 0, ?, ?, ?, ?, ?, 'OPEN', ?, ?, NULL, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0.0, 0.0, 0.0, 0, 0, ?, ?, ?, ?, ?, 'OPEN', ?, ?, NULL, ?)
                 """,
                 (
+                    owner,
                     ticker,
                     asset_type,
                     req.asset_currency,
@@ -182,15 +191,22 @@ class PaperTradingService:
             row = conn.execute("SELECT * FROM paper_positions WHERE id = ?", (pos_id,)).fetchone()
             return dict(row)
 
-    def list_positions(self) -> list[dict[str, Any]]:
+    def list_positions(self, owner_name: Optional[str] = None) -> list[dict[str, Any]]:
         with self.db.connect() as conn:
-            rows = conn.execute("SELECT * FROM paper_positions ORDER BY opened_at DESC").fetchall()
+            if owner_name is not None:
+                owner = _clean_owner(owner_name)
+                rows = conn.execute(
+                    "SELECT * FROM paper_positions WHERE owner_name = ? ORDER BY opened_at DESC",
+                    (owner,),
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM paper_positions ORDER BY opened_at DESC").fetchall()
             return [dict(r) for r in rows]
 
-    def move_stop_to_breakeven(self, position_id: int) -> dict[str, Any]:
+    def move_stop_to_breakeven(self, position_id: int, owner_name: Optional[str] = None) -> dict[str, Any]:
         with self.db.connect() as conn:
             row = conn.execute("SELECT * FROM paper_positions WHERE id = ?", (position_id,)).fetchone()
-            if not row:
+            if not row or (owner_name is not None and row["owner_name"] != _clean_owner(owner_name)):
                 raise KeyError(f"Posição #{position_id} não encontrada.")
             pos = dict(row)
             if pos["status"] != "OPEN":
@@ -203,10 +219,15 @@ class PaperTradingService:
             )
             return dict(conn.execute("SELECT * FROM paper_positions WHERE id = ?", (position_id,)).fetchone())
 
-    def update_journal(self, position_id: int, req: PaperPositionJournalUpdate) -> dict[str, Any]:
+    def update_journal(
+        self,
+        position_id: int,
+        req: PaperPositionJournalUpdate,
+        owner_name: Optional[str] = None,
+    ) -> dict[str, Any]:
         with self.db.connect() as conn:
             row = conn.execute("SELECT * FROM paper_positions WHERE id = ?", (position_id,)).fetchone()
-            if not row:
+            if not row or (owner_name is not None and row["owner_name"] != _clean_owner(owner_name)):
                 raise KeyError(f"Posição #{position_id} não encontrada.")
             updates = []
             params: list[Any] = []
@@ -243,10 +264,11 @@ class PaperTradingService:
         exit_price: Optional[float] = None,
         status: str = "CLOSED_MANUAL",
         journal_lesson: Optional[str] = None,
+        owner_name: Optional[str] = None,
     ) -> dict[str, Any]:
         with self.db.connect() as conn:
             row = conn.execute("SELECT * FROM paper_positions WHERE id = ?", (position_id,)).fetchone()
-            if not row:
+            if not row or (owner_name is not None and row["owner_name"] != _clean_owner(owner_name)):
                 raise KeyError(f"Posição #{position_id} não encontrada.")
             pos = dict(row)
             if pos["status"] != "OPEN":
@@ -274,9 +296,15 @@ class PaperTradingService:
             updated = conn.execute("SELECT * FROM paper_positions WHERE id = ?", (position_id,)).fetchone()
             return dict(updated)
 
-    def delete_position(self, position_id: int) -> bool:
+    def delete_position(self, position_id: int, owner_name: Optional[str] = None) -> bool:
         with self.db.connect() as conn:
-            cur = conn.execute("DELETE FROM paper_positions WHERE id = ?", (position_id,))
+            if owner_name is not None:
+                cur = conn.execute(
+                    "DELETE FROM paper_positions WHERE id = ? AND owner_name = ?",
+                    (position_id, _clean_owner(owner_name)),
+                )
+            else:
+                cur = conn.execute("DELETE FROM paper_positions WHERE id = ?", (position_id,))
             return cur.rowcount > 0
 
     def _get_trailing_sma(self, ticker: str, window: int) -> Optional[float]:
@@ -506,7 +534,11 @@ class PaperTradingService:
             "by_emotion": _finalize(by_emotion),
         }
 
-    def get_portfolio_summary(self, refresh_prices: bool = False) -> dict[str, Any]:
+    def get_portfolio_summary(
+        self,
+        refresh_prices: bool = False,
+        owner_name: Optional[str] = None,
+    ) -> dict[str, Any]:
         warnings: list[str] = []
         triggered_stops: list[dict[str, Any]] = []
         triggered_partials: list[dict[str, Any]] = []
@@ -519,7 +551,7 @@ class PaperTradingService:
         fx_rate, fx_w = get_eurusd_rate(force_refresh=False)
         warnings.extend(fx_w)
 
-        positions = self.list_positions()
+        positions = self.list_positions(owner_name=owner_name)
         open_pos = [p for p in positions if p["status"] == "OPEN"]
         closed_pos = [p for p in positions if p["status"] != "OPEN"]
 

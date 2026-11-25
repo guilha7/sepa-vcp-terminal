@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     discord_webhook_url: str = ""
 
-    # Optional access password when deployed publicly online (leave empty on localhost)
+    # Optional admin password (protects Settings, API keys & Telegram channels when sharing with friends)
+    admin_password: str = ""
+    # Optional global site password (leave empty so friends enter with just their name)
     app_access_password: str = ""
 
     # Cache TTLs (seconds)

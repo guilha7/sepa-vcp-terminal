@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { api } from './services/api'
+import { api, getStoredUserName } from './services/api'
 import { Layout } from './components/Layout'
 import { LoginGate } from './components/LoginGate'
+import { WelcomeNameModal } from './components/WelcomeNameModal'
 import { OnboardingGuide } from './components/OnboardingGuide'
 import { CommandPalette } from './components/CommandPalette'
 import { AlertsDrawer } from './components/AlertsDrawer'
@@ -20,8 +21,14 @@ export default function App() {
   const [health, setHealth] = useState(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [alertsOpen, setAlertsOpen] = useState(false)
+
+  const [userName, setUserName] = useState(() => getStoredUserName())
+  const [switchingUser, setSwitchingUser] = useState(false)
+
   const [authChecked, setAuthChecked] = useState(false)
   const [locked, setLocked] = useState(false)
+  const [adminRequired, setAdminRequired] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(true)
 
   const [guideOpen, setGuideOpen] = useState(() => {
     try {
@@ -35,8 +42,12 @@ export default function App() {
     try {
       const st = await api.getAuthStatus()
       setLocked(Boolean(st.password_required && !st.authenticated))
+      setAdminRequired(Boolean(st.admin_password_required))
+      setIsAdmin(Boolean(st.is_admin))
     } catch {
       setLocked(false)
+      setAdminRequired(false)
+      setIsAdmin(true)
     } finally {
       setAuthChecked(true)
     }
@@ -121,7 +132,21 @@ export default function App() {
       <LoginGate
         onUnlocked={() => {
           setLocked(false)
+          checkAuth()
           fetchHealth()
+        }}
+      />
+    )
+  }
+
+  // Friends enter with just their name (no password, no registration) -> isolates Paper Trading & Journal!
+  if (!userName || switchingUser) {
+    return (
+      <WelcomeNameModal
+        initialName={userName}
+        onConfirm={(chosen) => {
+          setUserName(chosen)
+          setSwitchingUser(false)
         }}
       />
     )
@@ -137,6 +162,8 @@ export default function App() {
         onOpenAlerts={() => setAlertsOpen(true)}
         onToggleGuide={handleToggleGuide}
         guideOpen={guideOpen}
+        userName={userName}
+        onSwitchUser={() => setSwitchingUser(true)}
         health={health}
       >
         <OnboardingGuide
@@ -164,6 +191,7 @@ export default function App() {
         {activeTab === 'vision' && <ChartVisionModule onSimulateTrade={handleSimulateTrade} />}
         {activeTab === 'risk' && (
           <RiskPaperModule
+            key={userName}
             prefillTrade={prefillTrade}
             onClearPrefill={() => setPrefillTrade(null)}
             onOpenXRay={handleOpenXRay}
@@ -175,6 +203,12 @@ export default function App() {
           <SettingsModule
             onSettingsSaved={fetchHealth}
             onOpenAlerts={() => setAlertsOpen(true)}
+            adminRequired={adminRequired}
+            isAdmin={isAdmin}
+            onAdminUnlocked={() => {
+              checkAuth()
+              fetchHealth()
+            }}
           />
         )}
       </Layout>
@@ -193,6 +227,7 @@ export default function App() {
         prefillAlert={prefillAlert}
         onClearPrefill={() => setPrefillAlert(null)}
         onAlertsChanged={fetchHealth}
+        isAdmin={isAdmin}
       />
     </>
   )

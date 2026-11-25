@@ -12,6 +12,7 @@ import {
   Settings,
   ShieldCheck,
   TrendingUp,
+  User,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -31,6 +32,8 @@ export function Layout({
   onOpenAlerts,
   onToggleGuide,
   guideOpen,
+  userName,
+  onSwitchUser,
   health,
   children,
 }) {
@@ -163,6 +166,15 @@ export function Layout({
                 </button>
               ))}
             </div>
+
+            <button
+              onClick={onSwitchUser}
+              title="Trocar de perfil (Paper Trading & Diário)"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-xl bg-terminal-panel border border-terminal-border hover:border-emerald-400/50 text-emerald-300 transition"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span className="font-semibold text-[11px] max-w-[90px] truncate">{userName || 'Trader'}</span>
+            </button>
 
             <button
               onClick={onToggleGuide}

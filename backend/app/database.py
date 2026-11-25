@@ -148,10 +148,12 @@ class Database:
                 ("setup_tag", "TEXT NOT NULL DEFAULT 'VCP'"),
                 ("journal_emotion", "TEXT NOT NULL DEFAULT 'DISCIPLINADO'"),
                 ("journal_lesson", "TEXT NOT NULL DEFAULT ''"),
+                ("owner_name", "TEXT NOT NULL DEFAULT 'default'"),
             ]
             for col_name, col_def in migrations:
                 if col_name not in existing_cols:
                     conn.execute(f"ALTER TABLE paper_positions ADD COLUMN {col_name} {col_def}")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_paper_owner ON paper_positions(owner_name)")
 
             # Seed default watchlist if empty
             count = conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
