@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   AlertOctagon,
+  AlertTriangle,
   BarChart3,
   BellPlus,
   CheckCircle2,
@@ -124,6 +125,11 @@ export function XRayModule({
   const volQ = data?.volume_quality || {}
   const inst = data?.institutional || {}
   const bt = data?.personality_backtest || {}
+  const edge = data?.trader_edge || {}
+  const dcr = edge.dcr || {}
+  const mtf = edge.mtf || {}
+  const sectorPeer = edge.sector_peer || {}
+  const macroEvents = edge.macro_events || {}
 
   const isFav = favorites.includes((data.ticker || '').toUpperCase())
   const isEurTicker = /\.(LS|DE|PA|AS|MC|MI)$/i.test(data.ticker || '')
@@ -147,6 +153,46 @@ export function XRayModule({
             <span className={`text-sm font-semibold ${sepa.daily_change_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
               {formatPct(sepa.daily_change_pct)} hoje
             </span>
+          </div>
+
+          {/* 1-Line Clean Entry Timing & Quality Strip: Weekly+Daily, DCR% + Projected Vol, Sector Peer RS */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            {mtf.available && (
+              <StatusBadge
+                variant={
+                  mtf.state === 'ALINHADO'
+                    ? 'green'
+                    : mtf.state === 'ESTICADO_SEMANAL' || mtf.state === 'CONFLITO_SEMANAL'
+                      ? 'yellow'
+                      : 'red'
+                }
+              >
+                {mtf.label}
+              </StatusBadge>
+            )}
+            {dcr.available && (
+              <StatusBadge
+                variant={dcr.dcr_state === 'FORTE' ? 'green' : dcr.dcr_state === 'FRACO' ? 'red' : 'slate'}
+              >
+                DCR {dcr.dcr_pct}% ({dcr.dcr_state === 'FORTE' ? 'Topo' : dcr.dcr_state === 'FRACO' ? 'Fraco' : 'Médio'})
+                {dcr.projected_volume_ratio !== null && dcr.projected_volume_ratio !== undefined
+                  ? ` • ${dcr.is_intraday_projected ? 'Vol Proj.' : 'Vol'} ${dcr.projected_volume_ratio}x`
+                  : ''}
+              </StatusBadge>
+            )}
+            {sectorPeer.available && (
+              <StatusBadge
+                variant={
+                  sectorPeer.status === 'LIDER_SETOR'
+                    ? 'cyan'
+                    : sectorPeer.status === 'ATRASADO_SETOR'
+                      ? 'red'
+                      : 'slate'
+                }
+              >
+                {sectorPeer.label}
+              </StatusBadge>
+            )}
           </div>
 
           {fund.earnings_within_14d && (
@@ -231,6 +277,19 @@ export function XRayModule({
       </div>
 
       <WarningBanner warnings={data.warnings} />
+
+      {/* Discreet Macro Event Warning (ONLY <= 48h before FOMC / CPI / NFP) */}
+      {macroEvents?.has_imminent_event && (
+        <div className="rounded-xl border border-amber-500/45 bg-amber-500/10 px-4 py-2 flex flex-wrap items-center gap-2 text-xs text-amber-200">
+          <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
+          <span>
+            <strong>Atenção Macro:</strong>{' '}
+            {(macroEvents.upcoming_within_48h || [])
+              .map((ev) => `${ev.title} (${ev.days_away === 0 ? 'HOJE' : ev.days_away === 1 ? 'AMANHÃ' : `em ${ev.days_away}d`} • ${ev.time_pt})`)
+              .join(' | ')}
+          </span>
+        </div>
+      )}
 
       {/* Single Active Strategy Selector (Synced with Chart & Panel Below!) */}
       <StrategySelector activeStrategy={activeStrategy} onChange={onChangeStrategy} />

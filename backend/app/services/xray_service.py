@@ -19,6 +19,12 @@ from app.services.market_data import (
 from app.services.minervini_vcp import analyze_sepa_vcp, compute_rs_line_series
 from app.services.news_sentiment import get_asset_news
 from app.services.quant_signals import compute_anchored_vwaps
+from app.services.trader_edge import (
+    compute_dcr_and_volume_runrate,
+    compute_mtf_confluence,
+    compute_sector_peer_rs,
+    get_upcoming_macro_events,
+)
 
 
 def _build_single_tf_series(df: pd.DataFrame, ma_windows: tuple[int, int, int]) -> dict[str, list[dict[str, Any]]]:
@@ -159,11 +165,16 @@ def get_fast_chart_preview(ticker: str) -> dict[str, Any]:
         data_source=source,
     )
     chart = build_chart_payload(df, bench_df if not bench_df.empty else None, sepa)
+    trader_edge = {
+        "dcr": compute_dcr_and_volume_runrate(df, ticker=norm, asset_type=asset_type),
+        "mtf": compute_mtf_confluence(df, asset_type=asset_type),
+    }
     return {
         "ticker": norm,
         "asset_type": asset_type,
         "data_source": source,
         "sepa": sepa,
+        "trader_edge": trader_edge,
         "chart": chart,
         "warnings": warnings,
     }
@@ -227,6 +238,17 @@ def get_asset_xray(ticker: str, force_refresh: bool = False) -> dict[str, Any]:
         quote_type=fundamentals.get("quote_type"),
         force_refresh=force_refresh,
     )
+    trader_edge = {
+        "dcr": compute_dcr_and_volume_runrate(df, ticker=norm, asset_type=asset_type),
+        "mtf": compute_mtf_confluence(df, asset_type=asset_type),
+        "sector_peer": compute_sector_peer_rs(
+            ticker=norm,
+            df=df,
+            sector=fundamentals.get("sector"),
+            asset_type=asset_type,
+        ),
+        "macro_events": get_upcoming_macro_events(),
+    }
     derivatives = (
         get_crypto_derivatives_for_ticker(norm, price_change_24h=sepa.get("daily_change_pct"), force_refresh=force_refresh)
         if asset_type == "crypto"
@@ -240,6 +262,7 @@ def get_asset_xray(ticker: str, force_refresh: bool = False) -> dict[str, Any]:
         "updated_at": time.time(),
         "sepa": sepa,
         "fundamentals": fundamentals,
+        "trader_edge": trader_edge,
         "volume_quality": volume_quality,
         "personality_backtest": personality_backtest,
         "institutional": institutional,

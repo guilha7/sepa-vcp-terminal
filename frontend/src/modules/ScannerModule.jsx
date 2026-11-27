@@ -854,6 +854,40 @@ export function ScannerModule({
                       <h3 className="text-lg font-mono font-bold text-white">{selectedItem.ticker}</h3>
                       <span className="text-xs text-slate-400 truncate max-w-[200px]">{selectedItem.name}</span>
                       {renderStrategyRowBadge(selectedItem)}
+                      {previewData?.trader_edge?.mtf?.available && (
+                        <StatusBadge
+                          variant={
+                            previewData.trader_edge.mtf.state === 'ALINHADO'
+                              ? 'green'
+                              : previewData.trader_edge.mtf.state === 'BAIXA'
+                                ? 'red'
+                                : 'yellow'
+                          }
+                        >
+                          {previewData.trader_edge.mtf.state === 'ALINHADO'
+                            ? 'Semanal ✓'
+                            : previewData.trader_edge.mtf.state === 'ESTICADO_SEMANAL'
+                              ? `Semanal +${previewData.trader_edge.mtf.dist_10w_pct}%`
+                              : 'Semanal ⚠'}
+                        </StatusBadge>
+                      )}
+                      {previewData?.trader_edge?.dcr?.available && (
+                        <StatusBadge
+                          variant={
+                            previewData.trader_edge.dcr.dcr_state === 'FORTE'
+                              ? 'green'
+                              : previewData.trader_edge.dcr.dcr_state === 'FRACO'
+                                ? 'red'
+                                : 'slate'
+                          }
+                        >
+                          DCR {previewData.trader_edge.dcr.dcr_pct}%
+                          {previewData.trader_edge.dcr.projected_volume_ratio !== null &&
+                          previewData.trader_edge.dcr.projected_volume_ratio !== undefined
+                            ? ` • ${previewData.trader_edge.dcr.is_intraday_projected ? 'VolP' : 'Vol'} ${previewData.trader_edge.dcr.projected_volume_ratio}x`
+                            : ''}
+                        </StatusBadge>
+                      )}
                     </div>
                   </div>
 

@@ -9,6 +9,7 @@ from app.database import db
 from app.services.crypto_derivatives import get_crypto_derivatives_radar
 from app.services.market_data import get_batch_ohlcv
 from app.services.notifications import notification_service
+from app.services.trader_edge import get_upcoming_macro_events
 
 
 def compute_ibd_market_timing(df: Optional[pd.DataFrame], ticker: str = "SPY") -> dict[str, Any]:
@@ -277,6 +278,8 @@ def compute_macro_and_rotation(force_refresh: bool = False) -> dict[str, Any]:
     if not force_refresh:
         cached = db.cache_get(cache_key)
         if cached and isinstance(cached, dict):
+            # Always evaluate imminent FOMC/CPI/NFP calendar fresh (zero-cost)
+            cached["macro_events"] = get_upcoming_macro_events()
             return cached
 
     macro_tickers = ["SPY", "QQQ", "BTC-USD", "^VIX", "^TNX", "DX-Y.NYB"]
@@ -533,6 +536,7 @@ def compute_macro_and_rotation(force_refresh: bool = False) -> dict[str, Any]:
             "any_ftd": bool(ibd_spy["follow_through_day"] or ibd_qqq["follow_through_day"]),
         },
         "market_breadth": breadth,
+        "macro_events": get_upcoming_macro_events(),
         "crypto_derivatives": crypto_derivs,
         "us_rotation": {
             "benchmark": "SPY",

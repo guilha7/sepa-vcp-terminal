@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   Activity,
+  AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   Flame,
@@ -86,6 +87,7 @@ export function MacroRotationModule({ onOpenXRay }) {
   const macro = data?.macro_traffic_light
   const ibd = data?.ibd_timing
   const breadth = data?.market_breadth
+  const macroEvents = data?.macro_events
   const cryptoDerivs = data?.crypto_derivatives
   const rotation = marketView === 'us' ? data?.us_rotation : data?.crypto_rotation
   const retField = tf === '1w' ? 'return_1w' : tf === '3m' ? 'return_3m' : 'return_1m'
@@ -139,6 +141,22 @@ export function MacroRotationModule({ onOpenXRay }) {
       </div>
 
       <WarningBanner warnings={data?.warnings} />
+
+      {/* Discreet High-Impact Macro Calendar Warning (ONLY visible <= 48h before FOMC / CPI / NFP) */}
+      {macroEvents?.has_imminent_event && (
+        <div className="rounded-xl border border-amber-500/45 bg-amber-500/10 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
+            <span>
+              <strong>Evento Macro Iminente:</strong>{' '}
+              {(macroEvents.upcoming_within_48h || [])
+                .map((ev) => `${ev.title} (${ev.days_away === 0 ? 'HOJE' : ev.days_away === 1 ? 'AMANHÃ' : `em ${ev.days_away}d`} • ${ev.time_pt})`)
+                .join(' | ')}
+            </span>
+          </div>
+          <span className="text-[11px] text-amber-300/85">Evita entradas agressivas antes do anúncio (risco de chicote).</span>
+        </div>
+      )}
 
       {/* Hero Semáforo Macro (Always Visible at Top) */}
       <section className={`rounded-2xl border ${theme.border} bg-gradient-to-r ${theme.bg} p-5 shadow-lg`}>
