@@ -63,13 +63,8 @@ export default function App() {
   const [adminRequired, setAdminRequired] = useState(false)
   const [isAdmin, setIsAdmin] = useState(true)
 
-  const [guideOpen, setGuideOpen] = useState(() => {
-    try {
-      return localStorage.getItem('sepa_guide_dismissed') !== '1'
-    } catch {
-      return true
-    }
-  })
+  // Keep Onboarding Guide closed by default so the workspace opens clean immediately (accessible anytime via "Guia")
+  const [guideOpen, setGuideOpen] = useState(false)
 
   const checkAuth = useCallback(async () => {
     try {
@@ -214,6 +209,8 @@ export default function App() {
             onCreateAlert={handleCreateAlert}
             favorites={userPrefs.favorites}
             onToggleFavorite={handleToggleFavorite}
+            activeStrategy={userPrefs.strategy || 'minervini'}
+            onChangeStrategy={(strat) => handleUpdateUserPrefs({ strategy: strat })}
             isAdmin={isAdmin}
           />
         )}
@@ -225,6 +222,8 @@ export default function App() {
             onCreateAlert={handleCreateAlert}
             favorites={userPrefs.favorites}
             onToggleFavorite={handleToggleFavorite}
+            activeStrategy={userPrefs.strategy || 'minervini'}
+            onChangeStrategy={(strat) => handleUpdateUserPrefs({ strategy: strat })}
             isAdmin={isAdmin}
           />
         )}

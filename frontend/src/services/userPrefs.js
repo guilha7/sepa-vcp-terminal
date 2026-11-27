@@ -1,3 +1,5 @@
+import { VALID_STRATEGY_IDS } from './strategies'
+
 const PREFS_KEY_PREFIX = 'sepa_user_prefs_v1_'
 
 function normalizeUserKey(userName) {
@@ -23,6 +25,7 @@ export function loadUserPrefs(userName, serverDefaults = {}) {
     stopLossPct: defaultStop,
     riskPerTradePct: 2.0,
     favorites: [],
+    strategy: 'minervini',
     customized: false,
   }
 
@@ -35,12 +38,14 @@ export function loadUserPrefs(userName, serverDefaults = {}) {
     const favs = Array.isArray(parsed.favorites)
       ? [...new Set(parsed.favorites.map(sanitizeTicker).filter(Boolean))]
       : []
+    const strat = VALID_STRATEGY_IDS.has(parsed.strategy) ? parsed.strategy : 'minervini'
 
     return {
       capitalEur: clampNumber(parsed.capitalEur, 10, 10000000, defaultCapital),
       stopLossPct: clampNumber(parsed.stopLossPct, 1.0, 7.0, defaultStop),
       riskPerTradePct: clampNumber(parsed.riskPerTradePct, 0.25, 5.0, 2.0),
       favorites: favs,
+      strategy: strat,
       customized: Boolean(parsed.customized),
     }
   } catch {
@@ -54,6 +59,10 @@ export function saveUserPrefs(userName, partial, serverDefaults = {}) {
     partial.favorites !== undefined
       ? [...new Set((partial.favorites || []).map(sanitizeTicker).filter(Boolean))]
       : current.favorites
+  const strat =
+    partial.strategy !== undefined && VALID_STRATEGY_IDS.has(partial.strategy)
+      ? partial.strategy
+      : current.strategy
 
   const next = {
     capitalEur: clampNumber(
@@ -75,6 +84,7 @@ export function saveUserPrefs(userName, partial, serverDefaults = {}) {
       current.riskPerTradePct,
     ),
     favorites: favs,
+    strategy: strat,
     customized: true,
   }
 

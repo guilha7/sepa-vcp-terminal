@@ -232,9 +232,9 @@ export function RiskPaperModule({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-white">Gestão de Risco (6% Max Loss), FX EUR/USD & Diário Paper Trading</h2>
-          <p className="text-xs text-slate-400">
-            Conversão live EUR/USD • Auto Parcial 2R + Breakeven • Trailing Stop SMA 10/21 • Diário de performance por Setup.
+          <h2 className="heading-hero">Gestão de Risco (≤ 6%) &amp; Paper Trading</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Calculadora de posição EUR/USD e simulador pessoal com Auto 2R, Breakeven e Trailing Stop.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -562,8 +562,8 @@ export function RiskPaperModule({
             </div>
           </div>
 
-          {/* Portfolio Heat & Sector Concentration Monitor */}
-          {heat && (
+          {/* Portfolio Heat & Sector Concentration Monitor (only shown when you have open positions) */}
+          {heat && heat.open_positions_count > 0 && (
             <div
               className={`terminal-card p-4 space-y-3 border ${
                 heat.heat_level === 'ALTO'
@@ -644,51 +644,47 @@ export function RiskPaperModule({
             <EquityCurveChart points={portfolio?.equity_curve || []} />
           </div>
 
-          {/* Van K. Tharp Expectancy & SQN Quality Card */}
-          <div className="terminal-card p-4 border-cyan-500/30 flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-0.5">
-              <div className="text-xs font-bold text-cyan-300">
-                Qualidade Estatística do Teu Sistema — Van K. Tharp (Expectancy &amp; SQN)
+          {/* Van K. Tharp Expectancy & SQN (only shown once you have >= 2 closed trades) */}
+          {(m.closed_trades ?? 0) >= 2 && (
+            <div className="terminal-card p-4 border-cyan-500/30 flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-cyan-300">
+                  Qualidade Estatística (Expectancy &amp; SQN)
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  SQN ≥ 2.0 indica vantagem matemática sólida nos teus trades fechados.
+                </p>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Mede se a tua estratégia tem vantagem matemática real (SQN ≥ 2.0 = sistema sólido; ≥ 3.0 = excelente).
-              </p>
+              <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+                <div className="px-3 py-2 rounded-xl bg-[#080e1c] border border-terminal-border">
+                  <div className="text-[10px] font-sans text-slate-400">Expectancy</div>
+                  <div className={`text-base font-bold ${(m.expectancy_r || 0) >= 0.2 ? 'text-emerald-400' : 'text-amber-300'}`}>
+                    {(m.expectancy_r || 0) >= 0 ? '+' : ''}
+                    {(m.expectancy_r ?? 0).toFixed(2)}R
+                  </div>
+                </div>
+                <div className="px-3 py-2 rounded-xl bg-[#080e1c] border border-terminal-border">
+                  <div className="text-[10px] font-sans text-slate-400">SQN</div>
+                  <div className={`text-base font-bold ${(m.sqn || 0) >= 2.0 ? 'text-emerald-400' : 'text-cyan-300'}`}>
+                    {m.sqn !== null && m.sqn !== undefined ? m.sqn.toFixed(2) : '—'}
+                  </div>
+                </div>
+                <StatusBadge variant={(m.sqn || 0) >= 2.0 ? 'green' : 'slate'}>
+                  {m.sqn_grade}
+                </StatusBadge>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
-              <div className="px-3 py-2 rounded-xl bg-[#080e1c] border border-terminal-border">
-                <div className="text-[10px] font-sans text-slate-400">Expectancy (R)</div>
-                <div className={`text-base font-bold ${(m.expectancy_r || 0) >= 0.2 ? 'text-emerald-400' : 'text-amber-300'}`}>
-                  {(m.expectancy_r || 0) >= 0 ? '+' : ''}
-                  {(m.expectancy_r ?? 0).toFixed(2)}R
+          )}
+
+          {/* Trading Journal Analytics (only shown once you have closed trades with setups) */}
+          {jStats.by_setup.length > 0 && (
+            <div className="terminal-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-white">
+                  <BookOpen className="w-4 h-4 text-cyan-400" />
+                  Diário — Performance por Setup &amp; Emoção
                 </div>
               </div>
-              <div className="px-3 py-2 rounded-xl bg-[#080e1c] border border-terminal-border">
-                <div className="text-[10px] font-sans text-slate-400">SQN Score</div>
-                <div className={`text-base font-bold ${(m.sqn || 0) >= 2.0 ? 'text-emerald-400' : 'text-cyan-300'}`}>
-                  {m.sqn !== null && m.sqn !== undefined ? m.sqn.toFixed(2) : '—'}
-                </div>
-              </div>
-              <StatusBadge variant={(m.sqn || 0) >= 2.0 ? 'green' : 'slate'}>
-                {m.sqn_grade || 'Amostra curta (< 5 trades)'}
-              </StatusBadge>
-            </div>
-          </div>
-
-          {/* Trading Journal Analytics: Where You Win vs Lose */}
-          <div className="terminal-card p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-white">
-                <BookOpen className="w-4 h-4 text-cyan-400" />
-                Diário de Trading — Onde Ganhas vs. Onde Perdes
-              </div>
-              <span className="text-[10px] text-slate-500">Agrupado por Setup &amp; Emoção (trades fechados)</span>
-            </div>
-
-            {jStats.by_setup.length === 0 ? (
-              <p className="text-xs text-slate-500">
-                Fecha trades com etiquetas de Setup (VCP, Breakout, FOMO...) para gerar automaticamente as estatísticas de edge do teu diário.
-              </p>
-            ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 <div className="space-y-1.5">
                   <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Por Setup</div>
@@ -712,7 +708,7 @@ export function RiskPaperModule({
                 </div>
 
                 <div className="space-y-1.5">
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Por Emoção / Disciplina</div>
+                  <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Por Emoção</div>
                   {jStats.by_emotion.map((row) => (
                     <div
                       key={row.tag}
@@ -732,8 +728,8 @@ export function RiskPaperModule({
                   ))}
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

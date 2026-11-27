@@ -16,12 +16,12 @@ import {
 } from 'lucide-react'
 
 const NAV_ITEMS = [
-  { id: 'macro', step: '01', label: 'Macro & Mercado', sub: 'Semáforo, IBD, Breadth & Cripto', icon: Activity },
-  { id: 'scanner', step: '02', label: 'Scanner de Setups', sub: 'VCP, Pocket, Squeeze, EP, HTF', icon: Radar },
-  { id: 'xray', step: '03', label: 'Raio-X de Ativo', sub: 'AVWAP, Semanal, RS & Briefing', icon: BarChart3 },
-  { id: 'vision', step: '04', label: 'Visão IA Gráficos', sub: 'Colar Print (Ctrl+V)', icon: Camera },
-  { id: 'risk', step: '05', label: 'Risco 6% & Diário', sub: 'FX, Auto 2R, SQN & Paper', icon: ShieldCheck },
-  { id: 'settings', step: '⚙', label: 'Definições', sub: 'Perfil, Favoritos, IA & Cache', icon: Settings },
+  { id: 'macro', step: '01', label: 'Macro & Setores', sub: 'Semáforo e fluxo de capital', icon: Activity },
+  { id: 'scanner', step: '02', label: 'Scanner', sub: 'Encontrar setups pela tua estratégia', icon: Radar },
+  { id: 'xray', step: '03', label: 'Raio-X', sub: 'Gráfico e análise completa', icon: BarChart3 },
+  { id: 'vision', step: '04', label: 'Visão IA', sub: 'Analisar print (Ctrl+V)', icon: Camera },
+  { id: 'risk', step: '05', label: 'Risco & Paper', sub: 'Calculadora ≤ 6% e carteira', icon: ShieldCheck },
+  { id: 'settings', step: '⚙', label: 'Definições', sub: 'Perfil, favoritos e admin', icon: Settings },
 ]
 
 export function Layout({
@@ -125,11 +125,6 @@ export function Layout({
               {aiLabel}
             </span>
           </div>
-          {health?.watchlist_counts && (
-            <div className="text-[10px] text-slate-500 font-mono">
-              Watchlist: {health.watchlist_counts.stocks} Ações • {health.watchlist_counts.crypto} Cripto
-            </div>
-          )}
         </div>
       </aside>
 

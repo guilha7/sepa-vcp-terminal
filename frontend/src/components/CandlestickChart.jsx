@@ -1,17 +1,82 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createChart, CrosshairMode, LineStyle } from 'lightweight-charts'
 
-export function CandlestickChart({ chartData, ticker, compact = false }) {
+function getLayerPreset(strategy, compact) {
+  switch (strategy) {
+    case 'qullamaggie':
+      return {
+        sma50: true,
+        sma150: false,
+        sma200: false,
+        avwap: false,
+        rs: false,
+        vcp: false,
+        pp: false,
+        levels: true,
+      }
+    case 'institutional':
+      return {
+        sma50: true,
+        sma150: false,
+        sma200: !compact,
+        avwap: false,
+        rs: true,
+        vcp: false,
+        pp: true,
+        levels: false,
+      }
+    case 'weinstein_squeeze':
+      return {
+        sma50: true,
+        sma150: true,
+        sma200: false,
+        avwap: true,
+        rs: true,
+        vcp: false,
+        pp: false,
+        levels: false,
+      }
+    case 'minervini':
+    default:
+      return {
+        sma50: true,
+        sma150: !compact,
+        sma200: true,
+        avwap: false,
+        rs: true,
+        vcp: true,
+        pp: false,
+        levels: true,
+      }
+  }
+}
+
+export function CandlestickChart({ chartData, ticker, compact = false, strategy = 'minervini' }) {
   const containerRef = useRef(null)
+  const initialPreset = getLayerPreset(strategy, compact)
   const [timeframe, setTimeframe] = useState('daily') // daily | weekly
   const [range, setRange] = useState(compact ? '6M' : '1Y')
-  const [showSma50, setShowSma50] = useState(true)
-  const [showSma150, setShowSma150] = useState(!compact)
-  const [showSma200, setShowSma200] = useState(true)
-  const [showAvwap, setShowAvwap] = useState(!compact)
-  const [showRsLine, setShowRsLine] = useState(true)
-  const [showVcpSwings, setShowVcpSwings] = useState(true)
-  const [showLevels, setShowLevels] = useState(true)
+  const [showSma50, setShowSma50] = useState(initialPreset.sma50)
+  const [showSma150, setShowSma150] = useState(initialPreset.sma150)
+  const [showSma200, setShowSma200] = useState(initialPreset.sma200)
+  const [showAvwap, setShowAvwap] = useState(initialPreset.avwap)
+  const [showRsLine, setShowRsLine] = useState(initialPreset.rs)
+  const [showVcpSwings, setShowVcpSwings] = useState(initialPreset.vcp)
+  const [showPocketPivots, setShowPocketPivots] = useState(initialPreset.pp)
+  const [showLevels, setShowLevels] = useState(initialPreset.levels)
+
+  // Automatically sync visible chart layers when user switches strategy (zero visual noise from other strategies!)
+  useEffect(() => {
+    const p = getLayerPreset(strategy, compact)
+    setShowSma50(p.sma50)
+    setShowSma150(p.sma150)
+    setShowSma200(p.sma200)
+    setShowAvwap(p.avwap)
+    setShowRsLine(p.rs)
+    setShowVcpSwings(p.vcp)
+    setShowPocketPivots(p.pp)
+    setShowLevels(p.levels)
+  }, [strategy, compact])
 
   const activeSeries =
     timeframe === 'weekly' && chartData?.weekly?.candles?.length
@@ -181,15 +246,15 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
         })
       }
 
-      // Pocket Pivot markers (Gil Morales & Chris Kacher)
+      // Pocket Pivot markers (shown ONLY for Institutional strategy or if toggled)
       const ppDates = chartData?.pocket_pivot_dates || []
-      if (showVcpSwings && ppDates.length > 0) {
+      if (showPocketPivots && ppDates.length > 0) {
         ppDates.forEach((dt) => {
           if (validDates.has(dt)) {
             markers.push({
               time: dt,
               position: 'aboveBar',
-              color: '#38bdf8',
+              color: '#a855f7',
               shape: 'circle',
               text: 'PP',
             })
@@ -253,10 +318,11 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
       ro.disconnect()
       chart.remove()
     }
-  }, [chartData, activeSeries, timeframe, range, showSma50, showSma150, showSma200, showAvwap, showRsLine, showVcpSwings, showLevels, compact])
+  }, [chartData, activeSeries, timeframe, range, showSma50, showSma150, showSma200, showAvwap, showRsLine, showVcpSwings, showPocketPivots, showLevels, compact])
 
   const hasWeekly = Boolean(chartData?.weekly?.candles?.length)
-  const hasVcpLegs = (chartData?.vcp_legs || []).length > 0 || (chartData?.pocket_pivot_dates || []).length > 0
+  const hasVcpLegs = (chartData?.vcp_legs || []).length > 0
+  const hasPpDates = (chartData?.pocket_pivot_dates || []).length > 0
   const hasAvwap = Boolean(chartData?.avwap_swing_low?.length)
 
   return (
@@ -286,12 +352,12 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
             </div>
           )}
 
-          {chartData?.rs_new_high_before_price && (
+          {strategy === 'minervini' && chartData?.rs_new_high_before_price && (
             <span className="px-2 py-0.5 rounded-md bg-blue-500/20 border border-blue-400/50 text-blue-300 font-mono font-bold text-[10px]">
               ● RS NEW HIGH
             </span>
           )}
-          {chartData?.ttm_squeeze_state && chartData.ttm_squeeze_state !== 'NEUTRO' && (
+          {strategy === 'weinstein_squeeze' && chartData?.ttm_squeeze_state && chartData.ttm_squeeze_state !== 'NEUTRO' && (
             <span
               className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] border ${
                 chartData.ttm_squeeze_state === 'SQUEEZE_FIRE'
@@ -307,34 +373,48 @@ export function CandlestickChart({ chartData, ticker, compact = false }) {
             <input type="checkbox" checked={showSma50} onChange={(e) => setShowSma50(e.target.checked)} className="accent-cyan-500" />
             {timeframe === 'weekly' ? '10w' : '50'}
           </label>
-          <label className="inline-flex items-center gap-1 cursor-pointer text-amber-400">
-            <input type="checkbox" checked={showSma150} onChange={(e) => setShowSma150(e.target.checked)} className="accent-amber-500" />
-            {timeframe === 'weekly' ? '30w' : '150'}
-          </label>
-          <label className="inline-flex items-center gap-1 cursor-pointer text-purple-400">
-            <input type="checkbox" checked={showSma200} onChange={(e) => setShowSma200(e.target.checked)} className="accent-purple-500" />
-            {timeframe === 'weekly' ? '40w' : '200'}
-          </label>
-          {hasAvwap && timeframe === 'daily' && (
-            <label className="inline-flex items-center gap-1 cursor-pointer text-yellow-300" title="Anchored VWAP (Swing Low & YTD — Brian Shannon)">
+          {(strategy === 'minervini' || strategy === 'weinstein_squeeze') && (
+            <label className="inline-flex items-center gap-1 cursor-pointer text-amber-400">
+              <input type="checkbox" checked={showSma150} onChange={(e) => setShowSma150(e.target.checked)} className="accent-amber-500" />
+              {timeframe === 'weekly' ? '30w' : '150'}
+            </label>
+          )}
+          {(strategy === 'minervini' || strategy === 'institutional') && (
+            <label className="inline-flex items-center gap-1 cursor-pointer text-purple-400">
+              <input type="checkbox" checked={showSma200} onChange={(e) => setShowSma200(e.target.checked)} className="accent-purple-500" />
+              {timeframe === 'weekly' ? '40w' : '200'}
+            </label>
+          )}
+          {strategy === 'weinstein_squeeze' && hasAvwap && timeframe === 'daily' && (
+            <label className="inline-flex items-center gap-1 cursor-pointer text-yellow-300" title="Anchored VWAP">
               <input type="checkbox" checked={showAvwap} onChange={(e) => setShowAvwap(e.target.checked)} className="accent-yellow-400" />
               AVWAP
             </label>
           )}
-          <label className="inline-flex items-center gap-1 cursor-pointer text-blue-400">
-            <input type="checkbox" checked={showRsLine} onChange={(e) => setShowRsLine(e.target.checked)} className="accent-blue-500" />
-            RS
-          </label>
-          {hasVcpLegs && timeframe === 'daily' && (
-            <label className="inline-flex items-center gap-1 cursor-pointer text-emerald-400">
-              <input type="checkbox" checked={showVcpSwings} onChange={(e) => setShowVcpSwings(e.target.checked)} className="accent-emerald-500" />
-              VCP/PP
+          {strategy !== 'qullamaggie' && (
+            <label className="inline-flex items-center gap-1 cursor-pointer text-blue-400">
+              <input type="checkbox" checked={showRsLine} onChange={(e) => setShowRsLine(e.target.checked)} className="accent-blue-500" />
+              RS
             </label>
           )}
-          <label className="inline-flex items-center gap-1 cursor-pointer text-rose-400">
-            <input type="checkbox" checked={showLevels} onChange={(e) => setShowLevels(e.target.checked)} className="accent-rose-500" />
-            Pivô/-6%
-          </label>
+          {strategy === 'minervini' && hasVcpLegs && timeframe === 'daily' && (
+            <label className="inline-flex items-center gap-1 cursor-pointer text-emerald-400">
+              <input type="checkbox" checked={showVcpSwings} onChange={(e) => setShowVcpSwings(e.target.checked)} className="accent-emerald-500" />
+              VCP
+            </label>
+          )}
+          {strategy === 'institutional' && hasPpDates && timeframe === 'daily' && (
+            <label className="inline-flex items-center gap-1 cursor-pointer text-purple-300">
+              <input type="checkbox" checked={showPocketPivots} onChange={(e) => setShowPocketPivots(e.target.checked)} className="accent-purple-400" />
+              Pocket Pivots
+            </label>
+          )}
+          {(strategy === 'minervini' || strategy === 'qullamaggie') && (
+            <label className="inline-flex items-center gap-1 cursor-pointer text-rose-400">
+              <input type="checkbox" checked={showLevels} onChange={(e) => setShowLevels(e.target.checked)} className="accent-rose-500" />
+              Pivô/Stop
+            </label>
+          )}
         </div>
 
         {timeframe === 'daily' && (

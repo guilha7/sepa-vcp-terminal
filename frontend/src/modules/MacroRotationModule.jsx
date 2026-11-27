@@ -123,9 +123,9 @@ export function MacroRotationModule({ onOpenXRay }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="heading-hero">Passo 1 • Ambiente de Mercado &amp; Fluxo de Capital</h2>
+          <h2 className="heading-hero">Macro &amp; Fluxo de Capital</h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Primeiro vê se o mercado está favorável (Semáforo + IBD + Breadth) e depois descobre onde o dinheiro está a entrar • Atualizado: {formatTimestamp(data?.updated_at)}
+            Atualizado: {formatTimestamp(data?.updated_at)}
           </p>
         </div>
         <button
@@ -223,78 +223,71 @@ export function MacroRotationModule({ onOpenXRay }) {
         })}
       </div>
 
-      {/* TAB 1: Macro Benchmarks + IBD Market Timing + Stockbee Breadth */}
+      {/* TAB 1: Macro Benchmarks + IBD Market Timing + Stockbee Breadth (Clean & Focused) */}
       {sectionTab === 'pulse' && (
         <div className="space-y-5">
-          {/* 6 Macro Indicators Cards */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            {(macro?.benchmarks || []).map((b) => {
-              const isPositive = (b.daily_change_pct || 0) >= 0
-              const clickable = ['SPY', 'QQQ', 'BTC-USD'].includes(b.ticker)
-              return (
-                <div
-                  key={b.ticker}
-                  onClick={() => clickable && onOpenXRay(b.ticker)}
-                  className={`terminal-card p-3.5 flex flex-col justify-between gap-2 ${
-                    clickable ? 'cursor-pointer hover:border-cyan-400/60 transition' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-1">
-                    <div>
-                      <div className="text-[11px] text-slate-400">{b.label}</div>
-                      <div className="font-mono font-bold text-sm text-slate-100">{b.ticker}</div>
+          {/* 4 Essential Macro Cards (SPY, QQQ, BTC, VIX) */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {(macro?.benchmarks || [])
+              .filter((b) => ['SPY', 'QQQ', 'BTC-USD', '^VIX'].includes(b.ticker))
+              .map((b) => {
+                const isPositive = (b.daily_change_pct || 0) >= 0
+                const clickable = ['SPY', 'QQQ', 'BTC-USD'].includes(b.ticker)
+                return (
+                  <div
+                    key={b.ticker}
+                    onClick={() => clickable && onOpenXRay(b.ticker)}
+                    className={`terminal-card p-3.5 flex flex-col justify-between gap-2 ${
+                      clickable ? 'cursor-pointer hover:border-cyan-400/60 transition' : ''
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-1">
+                      <div>
+                        <div className="text-[11px] text-slate-400">{b.label}</div>
+                        <div className="font-mono font-bold text-sm text-slate-100">{b.ticker}</div>
+                      </div>
+                      <span className={`font-mono text-xs font-semibold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatPct(b.daily_change_pct)}
+                      </span>
                     </div>
-                    <span className={`font-mono text-xs font-semibold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {formatPct(b.daily_change_pct)}
-                    </span>
-                  </div>
 
-                  <div className="flex items-end justify-between">
-                    <div className="font-mono text-lg font-bold text-white tabular-nums">
-                      {formatPrice(b.price)}
-                      {b.ticker === '^TNX' ? '%' : ''}
+                    <div className="flex items-end justify-between">
+                      <div className="font-mono text-lg font-bold text-white tabular-nums">
+                        {formatPrice(b.price)}
+                      </div>
+                      <MiniSparkline data={b.sparkline} positive={(b.return_1m || 0) >= 0} />
                     </div>
-                    <MiniSparkline data={b.sparkline} positive={(b.return_1m || 0) >= 0} />
-                  </div>
 
-                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 border-t border-terminal-border/70 pt-2">
-                    <span>
-                      50D:{' '}
-                      <strong className={b.above_sma50 ? 'text-emerald-400' : 'text-rose-400'}>
-                        {b.above_sma50 === null ? '—' : b.above_sma50 ? 'ACIMA' : 'ABAIXO'}
-                      </strong>
-                    </span>
-                    <span>
-                      200D:{' '}
-                      <strong className={b.above_sma200 ? 'text-emerald-400' : 'text-rose-400'}>
-                        {b.above_sma200 === null ? '—' : b.above_sma200 ? 'ACIMA' : 'ABAIXO'}
-                      </strong>
-                    </span>
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 border-t border-terminal-border/70 pt-2">
+                      <span>
+                        50D:{' '}
+                        <strong className={b.above_sma50 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {b.above_sma50 === null ? '—' : b.above_sma50 ? 'ACIMA' : 'ABAIXO'}
+                        </strong>
+                      </span>
+                      <span>
+                        200D:{' '}
+                        <strong className={b.above_sma200 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {b.above_sma200 === null ? '—' : b.above_sma200 ? 'ACIMA' : 'ABAIXO'}
+                        </strong>
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
           </section>
 
-          {/* Institutional Timing Grid: IBD Distribution/FTD + Stockbee Breadth */}
+          {/* Compact Timing Grid: IBD Distribution + Stockbee Breadth */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* IBD Market Timing (William O'Neil) */}
-            <div className="terminal-card p-5 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-cyan-400" />
-                    Market Timing Institucional (William O&apos;Neil / IBD)
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Dias de Distribuição (vendas institucionais em 25 pregões) + Follow-Through Day (confirmação de fundo).
-                  </p>
-                </div>
-              </div>
+            <div className="terminal-card p-4 space-y-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Activity className="w-4 h-4 text-cyan-400" />
+                Dias de Distribuição (IBD)
+              </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[ibd?.spy, ibd?.qqq].filter(Boolean).map((idxItem) => (
-                  <div key={idxItem.ticker} className="rounded-xl bg-[#080e1c] border border-terminal-border p-3.5 space-y-2">
+                  <div key={idxItem.ticker} className="rounded-xl bg-[#080e1c] border border-terminal-border p-3 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="font-mono font-bold text-white text-sm">{idxItem.ticker}</span>
                       <StatusBadge
@@ -306,36 +299,26 @@ export function MacroRotationModule({ onOpenXRay }) {
                               : 'green'
                         }
                       >
-                        {idxItem.distribution_days} Dist. Days
+                        {idxItem.distribution_days} Dist.
                       </StatusBadge>
                     </div>
-                    <div className="text-xs font-medium text-slate-200">{idxItem.label}</div>
-                    <div className="text-[11px] text-slate-400">
-                      Follow-Through Day:{' '}
-                      <strong className={idxItem.follow_through_day ? 'text-emerald-400' : 'text-slate-500'}>
-                        {idxItem.follow_through_day ? `SIM (${idxItem.ftd_date})` : 'Não recente'}
-                      </strong>
-                    </div>
+                    <div className="text-xs text-slate-300">{idxItem.label}</div>
+                    {idxItem.follow_through_day && (
+                      <div className="text-[11px] font-semibold text-emerald-400">
+                        FTD ativo ({idxItem.ftd_date})
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400 bg-[#080e1c] border border-terminal-border rounded-lg px-3 py-2">
-                💡 <strong>Como ler:</strong> 0–3 dias de distribuição = saudável; 4–5 dias = mercado sob pressão; ≥ 6 dias = risco elevado de correção (reduzir posições).
-              </p>
             </div>
 
-            {/* Stockbee Market Breadth */}
-            <div className="terminal-card p-5 space-y-3.5">
+            <div className="terminal-card p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Gauge className="w-4 h-4 text-emerald-400" />
-                    Largura de Mercado — Stockbee Market Monitor
-                  </h3>
-                  <p className="text-[11px] text-slate-400">
-                    Mede a saúde interna em {breadth?.universe_size ?? 0} ações/ETFs para saber se os breakouts estão a funcionar.
-                  </p>
-                </div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Gauge className="w-4 h-4 text-emerald-400" />
+                  Saúde Interna (Breadth)
+                </h3>
                 <StatusBadge
                   variant={
                     breadth?.state === 'AGRESSIVO_LONG'
@@ -349,59 +332,24 @@ export function MacroRotationModule({ onOpenXRay }) {
                 </StatusBadge>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-xs">
+              <div className="grid grid-cols-3 gap-2.5 font-mono text-xs">
                 <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
-                  <div className="text-[10px] font-sans text-slate-400">% &gt; SMA 50</div>
+                  <div className="text-[10px] font-sans text-slate-400">&gt; SMA 50</div>
                   <div className="text-lg font-bold text-cyan-300 mt-0.5">{breadth?.pct_above_sma50 ?? 0}%</div>
                 </div>
                 <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
-                  <div className="text-[10px] font-sans text-slate-400">% &gt; SMA 200</div>
+                  <div className="text-[10px] font-sans text-slate-400">&gt; SMA 200</div>
                   <div className="text-lg font-bold text-purple-300 mt-0.5">{breadth?.pct_above_sma200 ?? 0}%</div>
                 </div>
                 <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
-                  <div className="text-[10px] font-sans text-slate-400">4% Up / Down (Hoje)</div>
+                  <div className="text-[10px] font-sans text-slate-400">4% Up / Down</div>
                   <div className="text-base font-bold mt-0.5">
                     <span className="text-emerald-400">{breadth?.up_4pct_today ?? 0}</span>
                     <span className="text-slate-500"> / </span>
                     <span className="text-rose-400">{breadth?.down_4pct_today ?? 0}</span>
                   </div>
                 </div>
-                <div className="rounded-xl bg-[#080e1c] border border-terminal-border p-3">
-                  <div className="text-[10px] font-sans text-slate-400">Rácio 4% (5 Dias)</div>
-                  <div
-                    className={`text-lg font-bold mt-0.5 ${
-                      (breadth?.ratio_5d || 0) >= 1.3
-                        ? 'text-emerald-400'
-                        : (breadth?.ratio_5d || 0) < 0.7
-                          ? 'text-rose-400'
-                          : 'text-amber-300'
-                    }`}
-                  >
-                    {breadth?.ratio_5d ?? 0}x
-                  </div>
-                </div>
               </div>
-              <p className="text-[11px] text-slate-300 bg-[#080e1c] border border-terminal-border rounded-lg px-3 py-2">
-                💡 {breadth?.guidance}
-              </p>
-            </div>
-          </div>
-
-          {/* Factor Breakdown */}
-          <div className="terminal-card p-4">
-            <div className="text-xs font-bold text-slate-300 mb-2.5">Detalhe dos 6 Fatores do Semáforo Macro</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
-              {(macro?.factors || []).map((f, idx) => (
-                <div key={idx} className="bg-[#080e1c] border border-terminal-border rounded-xl px-3.5 py-2.5 text-xs">
-                  <div className="flex items-center justify-between gap-2 mb-0.5">
-                    <span className="font-semibold text-slate-200">{f.name}</span>
-                    <StatusBadge variant={f.status === 'positivo' ? 'green' : f.status === 'negativo' ? 'red' : 'yellow'}>
-                      {f.points} pts
-                    </StatusBadge>
-                  </div>
-                  <p className="text-[11px] text-slate-400">{f.detail}</p>
-                </div>
-              ))}
             </div>
           </div>
         </div>
